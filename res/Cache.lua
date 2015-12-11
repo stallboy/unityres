@@ -1,26 +1,16 @@
+local util = require "res.util"
+
 local Resources = UnityEngine.Resources
 
-
-local function table_len(a)
-    local len = 0
-    for _, _ in pairs(a) do
-        len = len + 1
-    end
-    return len
-end
-
 local Cache = {
-    _UNLOAD_ASSETBUNDLE = 1,
-    _UNLOAD_RESOURCE = 2,
-    _UNLOAD_GAMEOBJECT = 3,
+    bundle2cache = {}
 }
 
-function Cache:new(maxsize, unloadtype)
+function Cache:new(maxsize)
     local o = {}
     o.maxsize = maxsize
-    o.unloadtype = unloadtype;
-    o.loaded = {} -- { assetpath : { asset: xx, refcnt: xx}, ... }, 这个不会删除
-    o.cached = {} -- { assetpath : { asset: xx, touch: xx }, ... } , 用maxsize来在做lru
+    o.loaded = {} -- { assetpath : { asset: xx, refcnt: xx, type: xx}, ... }, 这个不会删除
+    o.cached = {} -- { assetpath : { asset: xx, touch: xx, type: xx }, ... } , 用maxsize来在做lru
     o.serial = 0
     setmetatable(o, self)
     self.__index = self
@@ -35,8 +25,8 @@ function Cache:_load(assetpath)
     else
         local c = self.cached[assetpath]
         if c then
-            self.cached[assetpath] = nil
-            self.loaded[assetpath] = { asset = c.asset, refcnt = 1 }
+            self.cached[assetpath] = nil --出cached，进loaded
+            self.loaded[assetpath] = { asset = c.asset, refcnt = 1, type = c.type }
             return c.asset
         else
             return nil
@@ -44,7 +34,7 @@ function Cache:_load(assetpath)
     end
 end
 
-function Cache:_newloaded(assetpath, asset)
+function Cache:_newloaded(assetpath, asset, type)
     local c = self.cached[assetpath]
     if c then
         self.cached[assetpath] = nil
@@ -54,7 +44,10 @@ function Cache:_newloaded(assetpath, asset)
     if a then
         a.refcnt = a.refcnt + 1
     else
-        self.loaded[assetpath] = { asset = asset, refcnt = 1 }
+        self.loaded[assetpath] = { asset = asset, refcnt = 1, type = type } --入口，先入loaded
+        if type == util.assettype.assetbundle then
+            Cache.bundle2cache[assetpath] = self
+        end
     end
 end
 
@@ -63,8 +56,9 @@ function Cache:_free(assetpath)
     if a then
         a.refcnt = a.refcnt - 1
         if a.refcnt <= 0 then
+            self.loaded[assetpath] = nil --出loaded，进cached
             self.serial = self.serial + 1
-            self.cached[assetpath] = { asset = a.asset, touch = self.serial }
+            self.cached[assetpath] = { asset = a.asset, touch = self.serial, type = a.type }
             self:_purge()
         end
     else
@@ -77,30 +71,28 @@ function Cache:_free(assetpath)
 end
 
 function Cache:_purge()
-    if (table_len(self.cached) > self.maxsize) then
-        local eldest_assetpath = nil
-        local eldest_asset
-        local eldest_touch
+    if (util.table_len(self.cached) > self.maxsize) then
+        local eldest_assetpath
+        local eldest_cache
         local touched = false
-        for assetpath, at in pair(self.cached) do
+        for assetpath, cache in pairs(self.cached) do
             if not touched then
                 touched = true
                 eldest_assetpath = assetpath
-                eldest_asset = at.asset
-                eldest_touch = at.touch
-            elseif at.touch < eldest_touch then
+                eldest_cache = cache
+            elseif cache.touch < eldest_cache.touch then
                 eldest_assetpath = assetpath
-                eldest_asset = at.asset
-                eldest_touch = at.touch
+                eldest_cache = cache
             end
         end
 
         if eldest_assetpath then
-            self.cached[eldest_assetpath] = nil
-            if (self.unloadtype == Cache._UNLOAD_ASSETBUNDLE) then
-                eldest_asset:Unload(false)
-            elseif (self.unloadtype == Cache._UNLOAD_RESOURCE) then
-                Resources.UnloadAsset(eldest_asset)
+            self.cached[eldest_assetpath] = nil --出口
+            if (eldest_cache.type == util.assettype.assetbundle) then
+                eldest_cache.asset:Unload(false)
+                Cache.bundle2cache[eldest_assetpath] = nil
+            elseif (eldest_cache.type == util.assettype.asset) then
+                Resources.UnloadAsset(eldest_cache.asset)
             else
                 -- do not UnloadUnusedAssets
             end

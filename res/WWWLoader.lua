@@ -1,13 +1,7 @@
+local util = require "res.util"
+
 local WWW = UnityEngine.WWW
 local Yield = UnityEngine.Yield
-
-local function table_len(a)
-    local len = 0
-    for _, _ in pairs(a) do
-        len = len + 1
-    end
-    return len
-end
 
 local Container = {}
 
@@ -23,7 +17,7 @@ function Container:cancel(path, cb)
     local cbs = self.resource2cbs[path]
     if cbs then
         cbs[cb] = nil
-        if table_len(cbs) == 0 then
+        if util.table_len(cbs) == 0 then
             self.resource2cbs[path] = nil
         end
     end
@@ -82,7 +76,7 @@ function WWWLoader:load(path, callback)
     local cbs = self._runnings.resource2cbs[path]
     if cbs then
         cbs[callback] = 1;
-    elseif table_len(self._runnings.resource2cbs) < self.thread then
+    elseif util.table_len(self._runnings.resource2cbs) < self.thread then
         self._runnings:add(path, { callback = 1 })
         self:__dowww(path)
     else
