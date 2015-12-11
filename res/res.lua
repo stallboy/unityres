@@ -18,12 +18,13 @@ function res.init(editormode, abpath2assetinfo)
     -- callback 约定也不会注册2个相同的callback，所以一直都是1，没有考虑更新为2
 end
 
-function res.load_manifest(assetinfo)
-    res.__load_ab_asset(assetinfo.assetpath, assetinfo.abpath, function(_, asset, ab)
-        res.manifest = asset -- load and stay resistent, no in cache, no free
+function res.load_manifest(assetinfo, callback)
+    res.__load_ab_asset(assetinfo.assetpath, assetinfo.abpath, function(err, manifest, ab)
+        res.manifest = manifest -- load and stay resistent, no in cache, no free
         if ab then
             ab:Unload(false)
         end
+        callback(err, manifest)
     end)
 end
 
