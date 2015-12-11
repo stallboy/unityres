@@ -1,61 +1,9 @@
 local util = require "res.util"
+local CallbackCache = require "res.CallbackCache"
+local LoadFuture = require "res.LoadFuture"
 
 local WWW = UnityEngine.WWW
 local Yield = UnityEngine.Yield
-
-local Container = {}
-
-function Container:new()
-    local o = {}
-    o.resource2cbs = {} -- { path1: { callback1: 1, callback2: 1 }, path2: ... } }
-    setmetatable(o, self)
-    self.__index = self
-    return o
-end
-
-function Container:cancel(path, cb)
-    local cbs = self.resource2cbs[path]
-    if cbs then
-        cbs[cb] = nil
-        if util.table_len(cbs) == 0 then
-            self.resource2cbs[path] = nil
-        end
-    end
-end
-
-function Container:add(path, cbs)
-    self.resource2cbs[path] = cbs
-end
-
-function Container:remove(path)
-    local old = self.resource2cbs[path]
-    self.resource2cbs[path] = nil
-    return old
-end
-
-function Container:first()
-    for path, _ in pairs(self.resource2cbs) do
-        return path
-    end
-    return nil
-end
-
-
-local WWWFuture = {}
-
-function WWWFuture:new(container, path, cb)
-    local o = {}
-    o.container = container
-    o.path = path
-    o.cb = cb
-    setmetatable(o, self)
-    self.__index = self
-    return o
-end
-
-function WWWFuture:cancel()
-    self.container:cancel(self.path, self.cb)
-end
 
 
 local WWWLoader = {}
@@ -63,8 +11,8 @@ local WWWLoader = {}
 function WWWLoader:new()
     local o = {}
     o.thread = 5
-    o._runnings = Container:new()
-    o._pendings = Container:new()
+    o._runnings = CallbackCache:new()
+    o._pendings = CallbackCache:new()
 
     setmetatable(o, self)
     self.__index = self
@@ -72,7 +20,7 @@ function WWWLoader:new()
 end
 
 function WWWLoader:load(path, callback)
-    local container = self._runnings
+    local callbackcache = self._runnings
     local cbs = self._runnings.resource2cbs[path]
     if cbs then
         cbs[callback] = 1;
@@ -80,7 +28,7 @@ function WWWLoader:load(path, callback)
         self._runnings:add(path, { callback = 1 })
         self:__dowww(path)
     else
-        container = self._pendings
+        callbackcache = self._pendings
         cbs = self._pendings.resource2cbs[path]
         if cbs then
             cbs[callback] = 1
@@ -89,7 +37,7 @@ function WWWLoader:load(path, callback)
         end
     end
 
-    return WWWFuture:new(container, path, callback)
+    return LoadFuture:new(callbackcache, path, callback)
 end
 
 function WWWLoader:__dowww(path)
@@ -107,8 +55,8 @@ function WWWLoader:__wwwdone(path, www)
     for cb, _ in pairs(cbs) do
         cb(www)
     end
-
     self._runnings:remove(path)
+
     local pend = self._pendings:first()
     if pend then
         local pendcbs = self._pendings:remove(pend)

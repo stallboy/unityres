@@ -1,5 +1,7 @@
 local WWWLoader = require "res.WWWLoader"
 local Cache = require "res.Cache"
+local CallbackCache = require "res.CallbackCache"
+local LoadFuture = require "res.LoadFuture"
 
 local AssetDatabase = UnityEngine.AssetDatabase
 local Resources = UnityEngine.Resources
@@ -11,7 +13,7 @@ function res.init(editormode, abpath2assetinfo)
     res.abpath2assetinfo = abpath2assetinfo -- 用于依赖加载时查找是否需要cache
     res.wwwloader = WWWLoader:new()
     res.manifest = nil
-    res._loadings = {} -- { assetinfo: {callback1: 1, callback2: 1}, ... } ,
+    res._loadings = CallbackCache:new() -- { assetinfo: {callback1: 1, callback2: 1}, ... } ,
     -- assetinfo 约定就用同一个引用来访问，上层不用自己构造assetinfo，而是直接拿到assetinfo.csv中的引用.
     -- callback 约定也不会注册2个相同的callback，所以一直都是1，没有考虑更新为2
 end
@@ -26,19 +28,21 @@ function res.load_manifest(assetinfo)
 end
 
 function res.load(assetinfo, callback)
-    local cbs = res.__loadings[assetinfo]
+    local cbs = res._loadings.resource2cbs[assetinfo]
     if cbs then
         cbs[callback] = 1
     else
-        res.__loadings[assetinfo] = { callback = 1 }
+        res._loadings:add(assetinfo, { callback = 1 })
         res.__load(assetinfo, function(err, asset)
-            local cbs = res.__loadings[assetinfo]
-            res.__loadings[assetinfo] = nil
-            for cb, _ in pairs(cbs) do
-                cb(err, asset) --可能cb里把这个asset给free了，但没关系，有cache基本保证了asset肯定还在。
+            local cbs = res._loadings:remove(assetinfo)
+            if cbs then
+                for cb, _ in pairs(cbs) do
+                    cb(err, asset) --可能cb里把这个asset给free了，但没关系，有cache基本保证了asset肯定还在。
+                end
             end
         end)
     end
+    return LoadFuture:new(res._loadings, assetinfo, callback)
 end
 
 function res.free(assetinfo)
