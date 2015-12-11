@@ -4,16 +4,16 @@ local Cache = require "res.Cache"
 local AssetDatabase = UnityEngine.AssetDatabase
 local Resources = UnityEngine.Resources
 
-local function dummy()
-end
-
 local res = {}
 
 function res.init(editormode, abpath2assetinfo)
     res.editormode = editormode
-    res.abpath2assetinfo = abpath2assetinfo
+    res.abpath2assetinfo = abpath2assetinfo -- 用于依赖加载时查找是否需要cache
     res.wwwloader = WWWLoader:new()
     res.manifest = nil
+    res._loadings = {} -- { assetinfo: {callback1: 1, callback2: 1}, ... } ,
+    -- assetinfo 约定就用同一个引用来访问，上层不用自己构造assetinfo，而是直接拿到assetinfo.csv中的引用.
+    -- callback 约定也不会注册2个相同的callback，所以一直都是1，没有考虑更新为2
 end
 
 function res.load_manifest(assetinfo)
@@ -25,17 +25,32 @@ function res.load_manifest(assetinfo)
     end)
 end
 
---  assetinfo {assetpath: xx, abpath: xx, type: xx, location: xx, cache: xx}
-    --  type, location 参考util.assettype, util.assetlocation
+function res.load(assetinfo, callback)
+    local cbs = res.__loadings[assetinfo]
+    if cbs then
+        cbs[callback] = 1
+    else
+        res.__loadings[assetinfo] = { callback = 1 }
+        res.__load(assetinfo, function(err, asset)
+            local cbs = res.__loadings[assetinfo]
+            res.__loadings[assetinfo] = nil
+            for cb, _ in pairs(cbs) do
+                cb(err, asset) --可能cb里把这个asset给free了，但没关系，有cache基本保证了asset肯定还在。
+            end
+        end)
+    end
+end
 
-function res.load(assetinfo, cb)
+function res.free(assetinfo)
+    assetinfo.cache:_free(assetinfo.assetpath)
+end
+
+--  assetinfo {assetpath: xx, abpath: xx, type: xx, location: xx, cache: xx}
+--  type, location 参考util.assettype, util.assetlocation
+function res.__load(assetinfo, callback)
     local assetpath = assetinfo.assetpath
     local abpath = assetinfo.abpath
     local cache = assetinfo.cache
-    local callback = cb
-    if callback == nil then
-        callback = dummy
-    end
 
     local cachedasset = cache:_load(assetpath)
     if cachedasset then
@@ -68,7 +83,7 @@ function res.load(assetinfo, cb)
         res.__load_ab_deps_withcache(abpath, deps, function(abs)
             local ab = abs[abpath]
             if ab == nil then
-                callback("load bundle error "..abpath, nil)
+                callback("load bundle error " .. abpath, nil)
                 res.__free_multi_ab_withcache(abs)
             elseif assetinfo.type == util.assettype.assetbundle then
                 callback(nil, ab)
@@ -82,10 +97,6 @@ function res.load(assetinfo, cb)
             end
         end)
     end
-end
-
-function res.free(assetinfo)
-    assetinfo.cache:_free(assetinfo.assetpath)
 end
 
 function res.__free_multi_ab_withcache(abs)
@@ -113,7 +124,7 @@ function res.__load_multi_ab_withcache(abpaths, callback)
     local abs = {}
     local cnt = 0
     for _, abpath in ipairs(abpaths) do
-        res._load_ab_withcache(abpath, function(err, ab)
+        res.__load_ab_withcache(abpath, function(_, ab)
             cnt = cnt + 1
             abs[abpath] = ab
             if cnt == reqcnt then
@@ -123,7 +134,7 @@ function res.__load_multi_ab_withcache(abpaths, callback)
     end
 end
 
-function res._load_ab_withcache(abpath, callback)
+function res.__load_ab_withcache(abpath, callback)
     local abcache = Cache.bundle2cache[abpath]
     if abcache then
         local cachedab = abcache:_load(abpath)

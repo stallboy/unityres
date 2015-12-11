@@ -8,7 +8,7 @@ local Cache = {
 
 function Cache:new(maxsize)
     local o = {}
-    o.maxsize = maxsize
+    o.maxsize = maxsize -- 一定要 > 0
     o.loaded = {} -- { assetpath : { asset: xx, refcnt: xx, type: xx}, ... }, 这个不会删除
     o.cached = {} -- { assetpath : { asset: xx, touch: xx, type: xx }, ... } , 用maxsize来在做lru
     o.serial = 0
@@ -74,10 +74,8 @@ function Cache:_purge()
     if (util.table_len(self.cached) > self.maxsize) then
         local eldest_assetpath
         local eldest_cache
-        local touched = false
         for assetpath, cache in pairs(self.cached) do
-            if not touched then
-                touched = true
+            if eldest_assetpath == nil then
                 eldest_assetpath = assetpath
                 eldest_cache = cache
             elseif cache.touch < eldest_cache.touch then
