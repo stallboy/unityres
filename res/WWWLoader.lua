@@ -52,8 +52,10 @@ end
 
 function WWWLoader:__wwwdone(path, www)
     local cbs = self._runnings.resource2cbs[path]
-    for cb, _ in pairs(cbs) do
-        cb(www)
+    if cbs then
+        for cb, _ in pairs(cbs) do
+            cb(www)
+        end
     end
     self._runnings:remove(path)
 
