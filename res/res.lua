@@ -17,9 +17,6 @@ local coroutine = coroutine
 local res = {}
 
 function res.init(editormode, abpath2assetinfo)
-    if not editormode then
-        assert(abpath2assetinfo, "need abpath2assetinfo when not in editor mode")
-    end
     res.editormode = editormode
     res.abpath2assetinfo = abpath2assetinfo -- 用于依赖加载时查找是否需要cache
     res.wwwloader = WWWLoader:new()
@@ -42,12 +39,8 @@ function res.free(assetinfo)
     assetinfo.cache:_free(assetinfo.assetpath)
 end
 
---  assetinfo {assetpath: xx, abpath: xx, type: xx, location: xx, cache: xx}
---  type, location 参考util.assettype, util.assetlocation
---  约定所有assetinfo的asetpath不为nil，且assetinfo.csv以assetpath作为key，当type为asetbundle时assetpath==abpath
-
 function res.load(assetinfo, callback)
-    assert(callback, "need callback! if no callback, how to free")
+    assert(callback, "need callback!")
     local assetpath = assetinfo.assetpath
     local cache = assetinfo.cache
 
@@ -77,7 +70,7 @@ function res.load(assetinfo, callback)
         return LoadFuture:new(res._runnings, assetpath, id)
     end
 
-    -- 加载Resources目录下的asset，不用分析依赖的； 或加载有依赖的asetbundle里的
+    -- 加载Resources目录下不用分析依赖的； 或WWW加载有依赖的asetbundle里的
     local id = res._runnings:addpath(assetpath, callback)
     res.__load_asset_withcache(assetinfo, function(err, asset)
         local cbs = res._runnings:removepath(assetpath)

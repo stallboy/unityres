@@ -17,6 +17,8 @@ resource manager for unity slua
 
 * 其中cache 为Cache类的一个instance，里面实现了lru。
 
+* 约定所有assetinfo的assetpath不为nil，且assetinfo.csv以assetpath作为primary key，当type为asetbundle时assetpath==abpath
+
 * callback 参数为 (err, asset) err为nil时代表成功。
 
 
