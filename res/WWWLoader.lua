@@ -5,6 +5,10 @@ local LoadFuture = require "res.LoadFuture"
 local WWW = UnityEngine.WWW
 local Yield = UnityEngine.Yield
 
+local setmetatable = setmetatable
+local pairs = pairs
+local coroutine = coroutine
+local assert = assert
 
 local WWWLoader = {}
 
@@ -20,24 +24,24 @@ function WWWLoader:new()
 end
 
 function WWWLoader:load(path, callback)
-    local callbackcache = self._runnings
-    local cbs = self._runnings.resource2cbs[path]
+    local cbs = self._runnings.path2cbs[path]
+    local id
     if cbs then
-        cbs[callback] = 1;
-    elseif util.table_len(self._runnings.resource2cbs) < self.thread then
-        self._runnings:add(path, { callback = 1 })
+        id = self._runnings:addcallback(cbs, callback)
+        return LoadFuture:new(self._runnings, path, id)
+    elseif util.table_len(self._runnings.path2cbs) < self.thread then
+        id = self._runnings:addpath(path, callback)
         self:__dowww(path)
+        return LoadFuture:new(self._runnings, path, id)
     else
-        callbackcache = self._pendings
-        cbs = self._pendings.resource2cbs[path]
+        cbs = self._pendings.path2cbs[path]
         if cbs then
-            cbs[callback] = 1
+            id = self._pendings:addcallback(cbs, callback);
         else
-            self._pendings:add(path, { callback = 1 })
+            id = self._pendings:addpath(path, callback)
         end
+        return LoadFuture:new(self._pendings, path, id, self._runnings)
     end
-
-    return LoadFuture:new(callbackcache, path, callback)
 end
 
 function WWWLoader:__dowww(path)
@@ -51,21 +55,19 @@ function WWWLoader:__dowww(path)
 end
 
 function WWWLoader:__wwwdone(path, www)
-    local cbs = self._runnings.resource2cbs[path]
+    local cbs = self._runnings:removepath(path)
     if cbs then
-        for cb, _ in pairs(cbs) do
+        for _, cb in pairs(cbs) do
             cb(www)
         end
     end
-    self._runnings:remove(path)
 
-    local pend = self._pendings:first()
-    if pend then
-        local pendcbs = self._pendings:remove(pend)
-        self._runnings:add(pend, pendcbs)
-        self:__dowww(pend)
+    local pendpath = self._pendings:first()
+    if pendpath then
+        local pendcbs = self._pendings:removepath(pendpath)
+        self._runnings.path2cbs[pendpath] = pendcbs
+        self:__dowww(pendpath)
     end
 end
-
 
 return WWWLoader

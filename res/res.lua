@@ -2,48 +2,40 @@ local WWWLoader = require "res.WWWLoader"
 local Cache = require "res.Cache"
 local CallbackCache = require "res.CallbackCache"
 local LoadFuture = require "res.LoadFuture"
+local util = require "res.util"
 
 local AssetDatabase = UnityEngine.AssetDatabase
 local Resources = UnityEngine.Resources
+local Yield = UnityEngine.Yield
+
+local assert = assert
+local pairs = pairs
+local ipairs = ipairs
+local coroutine = coroutine
+
 
 local res = {}
 
 function res.init(editormode, abpath2assetinfo)
+    if not editormode then
+        assert(abpath2assetinfo, "need abpath2assetinfo when not in editor mode")
+    end
     res.editormode = editormode
     res.abpath2assetinfo = abpath2assetinfo -- 用于依赖加载时查找是否需要cache
     res.wwwloader = WWWLoader:new()
     res.manifest = nil
-    res._loadings = CallbackCache:new() -- { assetinfo: {callback1: 1, callback2: 1}, ... } ,
-    -- assetinfo 约定就用同一个引用来访问，上层不用自己构造assetinfo，而是直接拿到assetinfo.csv中的引用.
-    -- callback 约定也不会注册2个相同的callback，所以一直都是1，没有考虑更新为2
+    res._runnings = CallbackCache:new() -- assetinfo.assetpath 作为key
 end
 
 function res.load_manifest(assetinfo, callback)
+    assert(callback, "need callback!")
     res.__load_ab_asset(assetinfo.assetpath, assetinfo.abpath, function(err, manifest, ab)
-        res.manifest = manifest -- load and stay resistent, no in cache, no free
+        res.manifest = manifest
         if ab then
             ab:Unload(false)
         end
         callback(err, manifest)
     end)
-end
-
-function res.load(assetinfo, callback)
-    local cbs = res._loadings.resource2cbs[assetinfo]
-    if cbs then
-        cbs[callback] = 1
-    else
-        res._loadings:add(assetinfo, { callback = 1 })
-        res.__load(assetinfo, function(err, asset)
-            local cbs = res._loadings:remove(assetinfo)
-            if cbs then
-                for cb, _ in pairs(cbs) do
-                    cb(err, asset) --可能cb里把这个asset给free了，但没关系，有cache基本保证了asset肯定还在。
-                end
-            end
-        end)
-    end
-    return LoadFuture:new(res._loadings, assetinfo, callback)
 end
 
 function res.free(assetinfo)
@@ -52,38 +44,64 @@ end
 
 --  assetinfo {assetpath: xx, abpath: xx, type: xx, location: xx, cache: xx}
 --  type, location 参考util.assettype, util.assetlocation
-function res.__load(assetinfo, callback)
+--  约定所有assetinfo的asetpath不为nil，且assetinfo.csv以assetpath作为key，当type为asetbundle时assetpath==abpath
+
+function res.load(assetinfo, callback)
+    assert(callback, "need callback! if no callback, how to free")
     local assetpath = assetinfo.assetpath
-    local abpath = assetinfo.abpath
     local cache = assetinfo.cache
 
+    -- 在cache里
     local cachedasset = cache:_load(assetpath)
     if cachedasset then
         callback(nil, cachedasset)
-    elseif res.editormode then
-        local asset = AssetDatabase.LoadAssetAtPath(assetpath) --TODO, type
+        return LoadFuture.dummy
+    end
+
+    -- 同步加载模式，只用于测试吧
+    if res.editormode then
+        local asset = AssetDatabase.LoadAssetAtPath(assetpath)
         if asset then
             cache:_newloaded(assetpath, asset, assetinfo.type)
             callback(nil, asset)
         else
             callback("LoadAssetAtPath return nil", nil)
         end
-    elseif abpath == nil or #abpath == 0 then
-        if assetinfo.location == util.assetlocation.www or assetinfo.type == util.assettype.assetbundle then
-            callback("no abpath, but location is www or type is assetbundle", nil)
-        else
-            res.__load_asset_at_res(assetpath, function(err, asset)
+        return LoadFuture.dummy
+    end
+
+    -- 正在加载了，等着就行
+    local cbs = res._runnings.path2cbs[assetpath]
+    if cbs then
+        local id = res._runnings:addcallback(cbs, callback)
+        return LoadFuture:new(res._runnings, assetpath, id)
+    end
+
+    -- 加载Resources目录下的asset，不用分析依赖的； 或加载有依赖的asetbundle里的
+    local id = res._runnings:addpath(assetpath, callback)
+    res.__load_asset_withcache(assetinfo, function(err, asset)
+        local cbs = res._runnings:removepath(assetpath)
+        if cbs then
+            for _, cb in pairs(cbs) do
                 if err == nil then
                     cache:_newloaded(assetpath, asset, assetinfo.type)
                 end
-                callback(err, asset)
-            end)
+                cb(err, asset) --可能cb里把这个asset给free了，但没关系，有cache基本保证了asset肯定还在。
+            end
         end
-    elseif res.manifest == nil then
-        callback("manifest not load", nil)
-    elseif assetinfo.location == util.assetlocation.resources then
-        callback("do not put assetbundle in resources", nil)
+    end)
+    return LoadFuture:new(res._runnings, assetpath, id)
+end
+
+function res.__load_asset_withcache(assetinfo, callback)
+    local assetpath = assetinfo.assetpath
+    local abpath = assetinfo.abpath
+    if assetinfo.location == util.assetlocation.resources then
+        assert(not assetinfo.type == util.assettype.assetbundle, "do not put assetbundle in Resources: " .. assetpath)
+        assert(abpath == nil or #abpath == 0, "do not set abpath when type not assetbundle: " .. assetpath)
+        res.__load_asset_at_res(assetpath, callback)
     else
+        assert(res.manifest, "manifest not load")
         local deps = res.manifest:GetAllDependencies(abpath)
         res.__load_ab_deps_withcache(abpath, deps, function(abs)
             local ab = abs[abpath]
@@ -92,7 +110,6 @@ function res.__load(assetinfo, callback)
                 res.__free_multi_ab_withcache(abs)
             elseif assetinfo.type == util.assettype.assetbundle then
                 callback(nil, ab)
-                abs[abpath] = nil
                 res.__free_multi_ab_withcache(abs)
             else
                 res.__load_asset_at_ab(assetpath, ab, function(err, asset)
@@ -183,7 +200,7 @@ end
 
 function res.__load_asset_at_ab(assetpath, ab, callback)
     local co = coroutine.create(function()
-        local req = ab:LoadAssetAsync(assetpath) --can do many times, that's ok
+        local req = ab:LoadAssetAsync(assetpath)
         Yield(req)
         callback(nil, req.asset) -- ab not unload
     end)
