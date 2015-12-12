@@ -86,7 +86,7 @@ function res.load(assetinfo, callback)
                 if err == nil then
                     cache:_newloaded(assetpath, asset, assetinfo.type)
                 end
-                cb(err, asset) --可能cb里把这个asset给free了，但没关系，有cache基本保证了asset肯定还在。
+                cb(err, asset)
             end
         end
     end)
