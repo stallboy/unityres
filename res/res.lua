@@ -59,7 +59,9 @@ function res.load(assetinfo, callback)
             cache:_newloaded(assetpath, asset, assetinfo.type)
             callback(nil, asset)
         else
-            callback("AssetDatabase has no asset " .. assetpath, nil)
+            local err = "AssetDatabase has no asset " .. assetpath
+            res.errorlog(err)
+            callback(err, nil)
         end
         return LoadFuture.dummy
     end
