@@ -8,13 +8,12 @@ local Yield = UnityEngine.Yield
 local setmetatable = setmetatable
 local pairs = pairs
 local coroutine = coroutine
-local assert = assert
 
 local WWWLoader = {}
 
-function WWWLoader:new()
+function WWWLoader:new(limit)
     local o = {}
-    o.thread = 5
+    o.thread = limit
     o._runnings = CallbackCache:new()
     o._pendings = CallbackCache:new()
 

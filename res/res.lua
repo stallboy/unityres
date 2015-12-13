@@ -8,24 +8,30 @@ local AssetDatabase = UnityEngine.AssetDatabase
 local Resources = UnityEngine.Resources
 local Yield = UnityEngine.Yield
 
-local assert = assert
 local pairs = pairs
 local ipairs = ipairs
 local coroutine = coroutine
+local error = error
 
 
 local res = {}
 
-function res.init(editormode, abpath2assetinfo)
-    res.editormode = editormode
+function res.init_editormode(errorlog)
+    res.editormode = true
+    res.errorlog = errorlog or error
+end
+
+function res.initialize(abpath2assetinfo, wwwlimit, errorlog)
+    res.editormode = false
     res.abpath2assetinfo = abpath2assetinfo -- 用于依赖加载时查找是否需要cache
-    res.wwwloader = WWWLoader:new()
-    res.manifest = nil
+    res.wwwloader = WWWLoader:new(wwwlimit)
+    res.errorlog = errorlog or error
     res._runnings = CallbackCache:new() -- assetinfo.assetpath 作为key
+    res.manifest = nil
 end
 
 function res.load_manifest(assetinfo, callback)
-    assert(callback, "need callback!")
+    res.__assert(callback, "need callback!")
     res.__load_ab_asset(assetinfo.assetpath, assetinfo.abpath, function(err, manifest, ab)
         res.manifest = manifest
         if ab then
@@ -40,7 +46,7 @@ function res.free(assetinfo)
 end
 
 function res.load(assetinfo, callback)
-    assert(callback, "need callback!")
+    res.__assert(callback, "need callback!")
     local assetpath = assetinfo.assetpath
     local cache = assetinfo.cache
 
@@ -58,7 +64,7 @@ function res.load(assetinfo, callback)
             cache:_newloaded(assetpath, asset, assetinfo.type)
             callback(nil, asset)
         else
-            callback("LoadAssetAtPath return nil", nil)
+            callback("AssetDatabase has no asset " .. assetpath, nil)
         end
         return LoadFuture.dummy
     end
@@ -90,11 +96,11 @@ function res.__load_asset_withcache(assetinfo, callback)
     local assetpath = assetinfo.assetpath
     local abpath = assetinfo.abpath
     if assetinfo.location == util.assetlocation.resources then
-        assert(not assetinfo.type == util.assettype.assetbundle, "do not put assetbundle in Resources: " .. assetpath)
-        assert(abpath == nil or #abpath == 0, "do not set abpath when type not assetbundle: " .. assetpath)
+        res.__assert(not assetinfo.type == util.assettype.assetbundle, "do not put assetbundle in Resources: " .. assetpath)
+        res.__assert(abpath == nil or #abpath == 0, "do not set abpath when type not assetbundle: " .. assetpath)
         res.__load_asset_at_res(assetpath, callback)
     else
-        assert(res.manifest, "manifest not load")
+        res.__assert(res.manifest, "manifest not load")
         local deps = res.manifest:GetAllDependencies(abpath)
         res.__load_ab_deps_withcache(abpath, deps, function(abs)
             local ab = abs[abpath]
@@ -156,7 +162,9 @@ function res.__load_ab_withcache(abpath, callback)
         if cachedab then
             callback(nil, cachedab)
         else
-            callback("internal err, should not happen", nil)
+            local err = "internal err, cache has no assetBundle " .. abpath
+            res.errorlog(err)
+            callback(err, nil)
         end
     else
         local assetinfo = res.abpath2assetinfo[abpath]
@@ -188,7 +196,9 @@ function res.__load_ab(abpath, callback)
             if ab then
                 callback(nil, ab)
             else
-                callback("www has no assetBundle " .. abpath, nil)
+                local err = "www has no assetBundle " .. abpath
+                res.errorlog(err)
+                callback(err, nil)
             end
         else
             callback(www.error, nil)
@@ -203,7 +213,9 @@ function res.__load_asset_at_ab(assetpath, ab, callback)
         if req.asset then
             callback(nil, req.asset) -- ab not unload
         else
-            callback("assetBundle has no asset " .. assetpath, nil)
+            local err = "assetBundle has no asset " .. assetpath
+            res.errorlog(err)
+            callback(err, nil)
         end
     end)
     coroutine.resume(co)
@@ -216,10 +228,18 @@ function res.__load_asset_at_res(assetpath, callback)
         if req.asset then
             callback(nil, req.asset)
         else
-            callback("Resources has no asset " .. assetpath, nil)
+            local err = "Resources has no asset " .. assetpath
+            res.errorlog(err)
+            callback(err, nil)
         end
     end)
     coroutine.resume(co)
+end
+
+function res.__assert(v, message)
+    if not v then
+        res.errorlog(message)
+    end
 end
 
 return res
