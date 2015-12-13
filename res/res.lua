@@ -184,7 +184,12 @@ end
 function res.__load_ab(abpath, callback)
     res.wwwloader:load(abpath, function(www)
         if www.error == nil then
-            callback(nil, www.assetBundle)
+            local ab = www.assetBundle
+            if ab then
+                callback(nil, ab)
+            else
+                callback("www has no assetBundle " .. abpath, nil)
+            end
         else
             callback(www.error, nil)
         end
@@ -195,7 +200,11 @@ function res.__load_asset_at_ab(assetpath, ab, callback)
     local co = coroutine.create(function()
         local req = ab:LoadAssetAsync(assetpath)
         Yield(req)
-        callback(nil, req.asset) -- ab not unload
+        if req.asset then
+            callback(nil, req.asset) -- ab not unload
+        else
+            callback("assetBundle has no asset " .. assetpath, nil)
+        end
     end)
     coroutine.resume(co)
 end
@@ -204,7 +213,11 @@ function res.__load_asset_at_res(assetpath, callback)
     local co = coroutine.create(function()
         local req = Resources.LoadAsync(assetpath)
         Yield(req)
-        callback(nil, req.asset)
+        if req.asset then
+            callback(nil, req.asset)
+        else
+            callback("Resources has no asset " .. assetpath, nil)
+        end
     end)
     coroutine.resume(co)
 end
