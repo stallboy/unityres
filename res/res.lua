@@ -16,22 +16,17 @@ local error = error
 
 local res = {}
 
-function res.init_editormode(errorlog)
-    res.editormode = true
-    res.errorlog = errorlog or error
-end
-
-function res.initialize(abpath2assetinfo, wwwlimit, errorlog)
-    res.editormode = false
-    res.abpath2assetinfo = abpath2assetinfo -- 用于依赖加载时查找是否需要cache
+function res.initialize(wwwlimit, editormode, abpath2assetinfo, errorlog)
     res.wwwloader = WWWLoader:new(wwwlimit)
+    res.editormode = editormode
+    res.abpath2assetinfo = abpath2assetinfo -- 用于依赖加载时查找是否需要cache
     res.errorlog = errorlog or error
     res._runnings = CallbackCache:new() -- assetinfo.assetpath 作为key
     res.manifest = nil
 end
 
 function res.load_manifest(assetinfo, callback)
-    res.__assert(callback, "need callback!")
+    res.__assert(callback, "need callback")
     res.__load_ab_asset(assetinfo.assetpath, assetinfo.abpath, function(err, manifest, ab)
         res.manifest = manifest
         if ab then
@@ -46,7 +41,7 @@ function res.free(assetinfo)
 end
 
 function res.load(assetinfo, callback)
-    res.__assert(callback, "need callback!")
+    res.__assert(callback, "need callback")
     local assetpath = assetinfo.assetpath
     local cache = assetinfo.cache
 
@@ -76,7 +71,7 @@ function res.load(assetinfo, callback)
         return LoadFuture:new(res._runnings, assetpath, id)
     end
 
-    -- 加载Resources目录下不用分析依赖的； 或WWW加载有依赖的asetbundle里的
+    -- 加载
     local id = res._runnings:addpath(assetpath, callback)
     res.__load_asset_withcache(assetinfo, function(err, asset)
         local cbs = res._runnings:removepath(assetpath)
