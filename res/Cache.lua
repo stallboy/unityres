@@ -8,7 +8,7 @@ local Cache = {
 
 function Cache:new(maxsize)
     local o = {}
-    o.maxsize = maxsize -- 一定要 > 0
+    o.maxsize = maxsize
     o.loaded = {} -- { assetpath : { asset: xx, refcnt: xx, type: xx}, ... }, 这个不会删除
     o.cached = {} -- { assetpath : { asset: xx, touch: xx, type: xx }, ... } , 用maxsize来在做lru
     o.serial = 0
