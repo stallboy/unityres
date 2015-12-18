@@ -59,3 +59,9 @@ resource manager for unity slua
 2. 如果没有其他load了但刚调用完free，会在assetinfo.cache.cached中等待lru；
 
 3. 这样再等待一段时间，可能会被lru出去，cache中不再持有。
+
+## TODO
+
+* wwwloader的priority支持，等时机到了需要时写。
+
+* assetbundle variant支持，
