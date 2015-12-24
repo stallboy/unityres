@@ -1,67 +1,67 @@
 # unityres
 resource manager for unity slua 
 
-## ³õÊ¼»¯
+## åˆå§‹åŒ–
 
 ### res.initialize(wwwlimit, editormode, abpath2assetinfo, errorlog)
 
-* wwwlimit ÊµÏÖÁË¶ÔWWWµÄ×ÊÔ´ÉèÏŞ¡£Òª>=1¡£ÒâÎ¶×ÅÍ¬Ê±»áÆô¶¯¼¸¸öWWW¡£
+* wwwlimit å®ç°äº†å¯¹WWWçš„èµ„æºè®¾é™ã€‚è¦>=1ã€‚æ„å‘³ç€åŒæ—¶ä¼šå¯åŠ¨å‡ ä¸ªWWWã€‚
 	
-	* windowsÉÏ²âÊÔ½á¹ûÎª£¬µ±Æô¶¯1000¸öWWW£¬¿ÉÄÜ»áÆô¶¯200¸ö×óÓÒµÄÏß³Ì£¬Èç¹ûÔÚeditormodeÏÂÆô¶¯10000¸ö»áÌáÊ¾too many thread±ÀÀ£
+	* windowsä¸Šæµ‹è¯•ç»“æœä¸ºï¼Œå½“å¯åŠ¨1000ä¸ªWWWï¼Œå¯èƒ½ä¼šå¯åŠ¨200ä¸ªå·¦å³çš„çº¿ç¨‹ï¼Œå¦‚æœåœ¨editormodeä¸‹å¯åŠ¨10000ä¸ªä¼šæç¤ºtoo many threadå´©æºƒ
 
-* editormode Èç¹ûÉèÖÃtrue£¬ÔòÊ¹ÓÃÍ¬²½µ÷ÓÃAssetDatabase.LoadAssetAtPath 
+* editormode å¦‚æœè®¾ç½®trueï¼Œåˆ™ä½¿ç”¨åŒæ­¥è°ƒç”¨AssetDatabase.LoadAssetAtPath 
 
-* abpath2assetinfo ÓÉassetinfo.csvÖ±½ÓÉú³É¡£µ±¼ÓÔØÓĞÒÀÀµÏîµÄassetbundleÊ±·½±ãcacheÒÀÀµµÄassetbundle¡£
+* abpath2assetinfo ç”±assetinfo.csvç›´æ¥ç”Ÿæˆã€‚å½“åŠ è½½æœ‰ä¾èµ–é¡¹çš„assetbundleæ—¶æ–¹ä¾¿cacheä¾èµ–çš„assetbundleã€‚
 
-* errorlog ²ÎÊıÎª(message), Èç¹ûÎªnil£¬ÔÚ»áµ÷ÓÃluaµÄerror
+* errorlog å‚æ•°ä¸º(message), å¦‚æœä¸ºnilï¼Œåœ¨ä¼šè°ƒç”¨luaçš„error
 
 
 ### res.load_manifest(assetinfo, callback)
 
-* Õâ¸ö²»»áÎ»ÓÚcacheÖĞ£¬ĞèÒªÒ»µ©¼ÓÔØ£¬ÓÀÔ¶¶¼ÔÚÄÚ´æÖĞ
+* è¿™ä¸ªä¸ä¼šä½äºcacheä¸­ï¼Œéœ€è¦ä¸€æ—¦åŠ è½½ï¼Œæ°¸è¿œéƒ½åœ¨å†…å­˜ä¸­
 
-* Èç¹ûÊÇeditormode£¬Ôò²»ĞèÒªµ÷ÓÃÕâ¸öº¯Êı
+* å¦‚æœæ˜¯editormodeï¼Œåˆ™ä¸éœ€è¦è°ƒç”¨è¿™ä¸ªå‡½æ•°
 
-* assetinfo ¸ñÊ½Îª { assetpath: xx, abpath: xx, type: xx, location: xx, cache: xx }£¬
+* assetinfo æ ¼å¼ä¸º { assetpath: xx, abpath: xx, type: xx, location: xx, cache: xx }ï¼Œ
 
-	* ´Óassetinfo.csvÖĞ¶ÁÈ¡£¬¶øassetinfo.csvÓÉ´ò°ü³ÌĞòÉú³É¡£assetinfo.csvÒÔassetpath×÷Îªprimary key£¬£¨µ±typeÎªasetbundleÊ±assetpath==abpath£©
+	* ä»assetinfo.csvä¸­è¯»å–ï¼Œè€Œassetinfo.csvç”±æ‰“åŒ…ç¨‹åºç”Ÿæˆã€‚assetinfo.csvä»¥assetpathä½œä¸ºprimary keyï¼Œï¼ˆå½“typeä¸ºasetbundleæ—¶assetpath==abpathï¼‰
 
-	* type ¿ÉÄÜÎª { assetbundle = 1, asset = 2, prefab = 3 }£» location ¿ÉÄÜÎª { www = 1, resources = 2 }£»
+	* type å¯èƒ½ä¸º { assetbundle = 1, asset = 2, prefab = 3 }ï¼› location å¯èƒ½ä¸º { www = 1, resources = 2 }ï¼›
 
-	* cache ÎªCacheÀàµÄÒ»¸öinstance£¬ÀïÃæÊµÏÖÁËlru¡£
+	* cache ä¸ºCacheç±»çš„ä¸€ä¸ªinstanceï¼Œé‡Œé¢å®ç°äº†lruã€‚
 
-* callback ²ÎÊıÎª (err, asset) 
+* callback å‚æ•°ä¸º (err, asset) 
 
-	* errÎªnilÊ±£¬asset²»Îªnil£¬´ú±í³É¹¦
+	* errä¸ºnilæ—¶ï¼Œassetä¸ä¸ºnilï¼Œä»£è¡¨æˆåŠŸ
 
-	* err²»ÎªnilÊ±£¬ÊÇ´íÎóÔ­Òò×Ö·û´®£¬assetÎªnil£¬´ú±íÊ§°Ü
+	* errä¸ä¸ºnilæ—¶ï¼Œæ˜¯é”™è¯¯åŸå› å­—ç¬¦ä¸²ï¼Œassetä¸ºnilï¼Œä»£è¡¨å¤±è´¥
 
 
-## ¼ÓÔØ
+## åŠ è½½
 
 ### future = res.load(assetinfo, callback)
 
-* load³É¹¦ºó£¬Õâ¸öasset»áÔÚassetinfo.cache.loadedÖĞ£¬Èç¹û²»ĞèÒªÁË£¬ĞèÒªµ÷ÓÃres.free¡£×¢ÒâÒª if err == nil ÅĞ¶Ï³É¹¦ºóÔÙfree¡£²»È»µÄ»°¿ÉÄÜfreeµôÆäËûµØ·½µÄload¡£
+* loadæˆåŠŸåï¼Œè¿™ä¸ªassetä¼šåœ¨assetinfo.cache.loadedä¸­ï¼Œå¦‚æœä¸éœ€è¦äº†ï¼Œéœ€è¦è°ƒç”¨res.freeã€‚æ³¨æ„è¦ if err == nil åˆ¤æ–­æˆåŠŸåå†freeã€‚ä¸ç„¶çš„è¯å¯èƒ½freeæ‰å…¶ä»–åœ°æ–¹çš„loadã€‚
 
-* future ÊÇ¸öLoadFuture¶ÔÏó£¬¿Éµ÷ÓÃfuture:cancel()£¬ÕâÑùÈç¹ûcallback»¹Ã»±»µ÷ÓÃ£¬½«²»»áÔÙ±»µ÷ÓÃ¡£
+* future æ˜¯ä¸ªLoadFutureå¯¹è±¡ï¼Œå¯è°ƒç”¨future:cancel()ï¼Œè¿™æ ·å¦‚æœcallbackè¿˜æ²¡è¢«è°ƒç”¨ï¼Œå°†ä¸ä¼šå†è¢«è°ƒç”¨ã€‚
 
 
 ### future = res.wwwloader.load(url, callback)
 
-* callback ²ÎÊıÎª (www)
+* callback å‚æ•°ä¸º (www)
 
-## ÊÍ·Å
+## é‡Šæ”¾
 
 ### res.free(assetinfo)
 
-1. Èç¹ûÕâ·İ×ÊÔ´»¹ÓĞÆäËûload£¬ÔòÔÚassetinfo.cache.loadedÖĞ£¨cacheÀïrefcntµÄ£©£»
+1. å¦‚æœè¿™ä»½èµ„æºè¿˜æœ‰å…¶ä»–loadï¼Œåˆ™åœ¨assetinfo.cache.loadedä¸­ï¼ˆcacheé‡Œrefcntçš„ï¼‰ï¼›
 
-2. Èç¹ûÃ»ÓĞÆäËûloadÁËµ«¸Õµ÷ÓÃÍêfree£¬»áÔÚassetinfo.cache.cachedÖĞµÈ´ılru£»
+2. å¦‚æœæ²¡æœ‰å…¶ä»–loadäº†ä½†åˆšè°ƒç”¨å®Œfreeï¼Œä¼šåœ¨assetinfo.cache.cachedä¸­ç­‰å¾…lruï¼›
 
-3. ÕâÑùÔÙµÈ´ıÒ»¶ÎÊ±¼ä£¬¿ÉÄÜ»á±»lru³öÈ¥£¬cacheÖĞ²»ÔÙ³ÖÓĞ¡£
+3. è¿™æ ·å†ç­‰å¾…ä¸€æ®µæ—¶é—´ï¼Œå¯èƒ½ä¼šè¢«lruå‡ºå»ï¼Œcacheä¸­ä¸å†æŒæœ‰ã€‚
 
 ## TODO
 
-* wwwloaderµÄpriorityÖ§³Ö£¬µÈÊ±»úµ½ÁËĞèÒªÊ±Ğ´¡£
+* wwwloaderçš„priorityæ”¯æŒï¼Œç­‰æ—¶æœºåˆ°äº†éœ€è¦æ—¶å†™ã€‚
 
-* assetbundle variantÖ§³Ö£¬
+* assetbundle variantæ”¯æŒï¼Œ
