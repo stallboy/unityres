@@ -1,21 +1,6 @@
 local setmetatable = setmetatable
 
-local LoadFutureDummy = {}
-
-function LoadFutureDummy:new()
-    local o = {}
-    setmetatable(o, self)
-    self.__index = self
-    return o
-end
-
-function LoadFutureDummy:cancel()
-end
-
-
-local LoadFuture = {
-    dummy = LoadFutureDummy:new()
-}
+local LoadFuture = {}
 
 function LoadFuture:new(callbackcache, path, cbid, extracache)
     local o = {}
