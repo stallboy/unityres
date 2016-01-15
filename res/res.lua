@@ -13,7 +13,6 @@ local ipairs = ipairs
 local coroutine = coroutine
 local error = error
 
-
 local res = { assettype = util.assettype, assetlocation = util.assetlocation }
 
 function res.initialize(wwwlimit, editormode, abpath2assetinfo, errorlog)

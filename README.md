@@ -28,7 +28,7 @@ resource manager for unity slua
 
 	* err为nil时，asset不为nil，代表成功
 
-	* err不为nil时，是错误原因字符串，asset为nil，代表失败
+    * err不为nil时，是错误原因字符串，asset为nil，代表失败
 
 
 ## 加载
@@ -54,7 +54,8 @@ resource manager for unity slua
 * callback 参数为 (errs, result)
 
     * errs为nil时，代表全部成功；err不为nil时，代表有失败
-    * result 为{ err = err, asset = asset }的一个sequence
+
+    * result为{ err = err, asset = asset }的一个sequence
 
 
 ### future = res.wwwloader.load(url, callback)
