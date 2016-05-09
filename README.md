@@ -1,6 +1,58 @@
 # unityres
 resource manager for unity slua
 
+![res concept](resconcept.jpg?raw=true "res concept")
+
+assetinfo分为
+asset，（包括texture，audio，material这些东西，无需Instantiate，是让场景对象引用到这里，unity提供了unload）
+prefab，（在图中也属于asset，可以Instantiate 进入场景，这个是个一堆引用，不太占用内存，unity也没提供单独的unload方法）
+assetbundle，（这里会包含依赖，但res.load结束时持有者这个bundle和它依赖的bundle）
+
+以上图就是res.load ，res.free 针对asset，prefab和assetbundle的持有和释放情况。
+
+---
+
+针对asset，free时unity unload后还真的会重新reload，但editor下好像没即使更新渲染
+If there are any references from game objects in the scene to the asset and it is being used then Unity will reload the asset from disk as soon as it is accessed.
+
+针对prefab，free时什么都不做，因为unity没提供api来unload，只能通过unloadUnusedAssets释放了prefab，但这个太费。只适合切换场景时来一次。
+
+针对assetbundle，这个最明确，free 会减少一次 bundle和它依赖的bundle的引用计数。
+
+---
+
+unloadUnusedAssets时，针对lua对asset和prefab的引用，mono知道吗？
+知道，slua，通过ObjectCache使得slua在有引用A时。A也始终在csharp的ObjectCache里。
+lua的 metamethod __gc 来触发ObjectCache里的remove。
+从而实现了2个gc，lua gc和c# gc的沟通。
+
+---
+
+逻辑应该如何调用res.load, res.free
+应该平衡，调了多少load，就调多少free
+
+虽然res里有Cache，但还是需要逻辑保存，保证不用的时候free
+
+----
+
+根据unity自己搞得AssetBundleManager，www取出来后assetbundle后可以立马www.dispose。
+
+----
+
+prefab包含资源的引用，
+unity场景文件包含的是对prefab有修改Modifications的字段的记录，如果直接fbx拖到场景里，其实内部也是prefab，你可以直接
+
+    var go = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Monster/Shark/@SharkModel.FBX");
+    var g = GameObject.Instantiate(go);
+
+assetbundle的依赖 可由 AssetbundleManifest 来提供api 得到。
+asset之间的依赖，则没有提供api，内部根据externals的链接来得到依赖，应用无法得知。
+
+unity的文件格式 可做参考 [Serialized file format]
+
+[Serialized file format]: https://github.com/ata4/disunity/wiki/Serialized-file-format
+
+
 ## 初始化
 
 ### res.initialize(cfg, option, callback)
