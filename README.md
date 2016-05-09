@@ -52,6 +52,11 @@ unity的文件格式 可做参考 [Serialized file format]
 
 [Serialized file format]: https://github.com/ata4/disunity/wiki/Serialized-file-format
 
+针对unity资源相关api的测试 [unitytest]
+
+[unitytest]: https://github.com/stallboy/unitytest
+
+
 
 ## 初始化
 
