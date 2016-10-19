@@ -1,21 +1,17 @@
 # unityres
 resource manager for unity slua
 
-![res concept](resconcept.jpg?raw=true "res concept")
-
 assetinfo分为
 asset，（包括texture，audio，material这些东西，无需Instantiate，是让场景对象引用到这里，unity提供了unload）
 prefab，（在图中也属于asset，可以Instantiate 进入场景，这个是个一堆引用，不太占用内存，unity也没提供单独的unload方法）
 assetbundle，（这里会包含依赖，但res.load结束时持有者这个bundle和它依赖的bundle）
-
-以上图就是res.load ，res.free 针对asset，prefab和assetbundle的持有和释放情况。
 
 ---
 
 针对asset，free时unity unload后还真的会重新reload，但editor下好像没即使更新渲染
 If there are any references from game objects in the scene to the asset and it is being used then Unity will reload the asset from disk as soon as it is accessed.
 
-针对prefab，free时什么都不做，因为unity没提供api来unload，只能通过unloadUnusedAssets释放了prefab，但这个太费。只适合切换场景时来一次。
+针对prefab，free时什么都不做，因为unity没提供api来unload，只能通过unloadUnusedAssets释放了prefab，但这个太费。只适合切换场景时来一次。但我们的prefab都在assetbundle中，所以可以使用assetbundle:Unload(true)来释放
 
 针对assetbundle，这个最明确，free 会减少一次 bundle和它依赖的bundle的引用计数。
 
@@ -63,8 +59,8 @@ unity的文件格式 可做参考 [Serialized file format]
 ### res.initialize(cfg, option, callback)
 
 * option.wwwlimit 实现了对WWW的资源设限。要>=1。意味着同时会启动几个WWW。
-	
-	* windows上测试结果为，当启动1000个WWW，可能会启动200个左右的线程，如果在editormode下启动10000个会提示too many thread崩溃
+
+  * windows上测试结果为，当启动1000个WWW，可能会启动200个左右的线程，如果在editormode下启动10000个会提示too many thread崩溃
 
 * option.useEditorLoad 如果设置true，则使用同步调用AssetDatabase.LoadAssetAtPath
 
@@ -72,11 +68,11 @@ unity的文件格式 可做参考 [Serialized file format]
 
 * assets.csv 每行为assetinfo，格式为 { assetpath: xx, abpath: xx, type: xx, location: xx, cachepolicy: xx }，
 
-	* 从assets.csv中读取，而assets.csv由打包程序生成。assets.csv以assetpath作为primary key，（当type为asetbundle时assetpath==abpath）
+  * 从assets.csv中读取，而assets.csv由打包程序生成。assets.csv以assetpath作为primary key，（当type为asetbundle时assetpath==abpath）
 
-	* type 可能为 { assetbundle = 1, asset = 2, prefab = 3 }； location 可能为 { www = 1, resources = 2 }；
+  * type 可能为 { assetbundle = 1, asset = 2, prefab = 3 }； location 可能为 { www = 1, resources = 2 }；
 
-	* cachepolicy 指向assetcachepolicy.csv，解析后得到cache，为res.Cache 的一个实例。
+  * cachepolicy 指向assetcachepolicy.csv，解析后得到cache，为res.Cache 的一个实例。
 
 * assetcachepolicy.csv 每行格式为{ name : xx, lruSize : xx }
 
@@ -100,9 +96,9 @@ unity的文件格式 可做参考 [Serialized file format]
 * callback 参数为 (result) result为{ asset = asset, err = err }的一个sequence
 
 
-### future = res.wwwloader.load(url, callback)
+### future = res.assetBundleLoader.load(url, callback)
 
-* callback 参数为 (www)
+* callback 参数为 (wwwOrAssetBundleCreateRequest)
 
 * future 是个LoadFuture对象，可调用future:cancel()，这样如果callback还没被调用，将不会再被调用。
 
@@ -119,5 +115,5 @@ unity的文件格式 可做参考 [Serialized file format]
 
 ## 其他
 
-* wwwloader的priority支持，assetbundle variant支持，等时机到了需要时写。
+* assetBundleLoader的priority支持，assetbundle variant支持，等时机到了需要时写。
 
