@@ -1,4 +1,5 @@
 local util = require "res.util"
+local logger = require "common.Logger"
 
 local Resources = UnityEngine.Resources
 
@@ -66,11 +67,13 @@ function Cache:_put(assetpath, asset, err, type, refcount)
     local c = self.cached[assetpath]
     if c then
         self.cached[assetpath] = nil
+        logger.Error("cache.put in cached {0}", assetpath)
     end
 
     local a = self.loaded[assetpath]
     if a then
         a.refcnt = a.refcnt + refcount
+        logger.Error("cache.put in loaded {0}", assetpath)
     else
         self.loaded[assetpath] = { asset = asset, err = err, refcnt = refcount, type = type } --入口，先入loaded
     end
@@ -87,16 +90,12 @@ function Cache:_free(assetpath)
             self:_purge()
         end
     else
-        local c = self.cached[assetpath]
-        if c then
-            self.serial = self.serial + 1
-            c.touch = self.serial
-        end
+        logger.Error("cache.free not in loaded {0}", assetpath)
     end
 end
 
 function Cache:_purge()
-    if (util.table_len(self.cached) > self.maxsize) then
+    while util.table_len(self.cached) > self.maxsize do
         local eldest_assetpath
         local eldest_cache
         for assetpath, cache in pairs(self.cached) do
@@ -106,22 +105,24 @@ function Cache:_purge()
             end
         end
 
-        if eldest_assetpath and eldest_cache.asset then
+        if eldest_assetpath then
             self.cached[eldest_assetpath] = nil --出口
-            if eldest_cache.type == util.assettype.assetbundle then
-                util.debuglog("    AssetBundle.Unload {0}", eldest_assetpath)
-                eldest_cache.asset:Unload(true)
-                --- assetbundle都没有引用了，那些个依赖它的prefab，asset肯定也没有应用了，可以放心unload(true)
-            elseif eldest_cache.type == util.assettype.prefab then
-                util.debuglog("    Ignored Unload {0}", eldest_assetpath)
-                --- 不担心，会由assetbundle释放。假设所有的prefab都来自assetbundle
-            else
-                util.debuglog("    Resources.UnloadAsset {0}", eldest_assetpath)
-                Resources.UnloadAsset(eldest_cache.asset)
+            local asset = eldest_cache.asset
+            if asset then
+                if eldest_cache.type == util.assettype.assetbundle then
+                    logger.Res("    AssetBundle.Unload {0}", eldest_assetpath)
+                    asset:Unload(true)
+                    --- assetbundle都没有引用了，那些个依赖它的prefab，asset肯定也没有应用了，可以放心unload(true)
+                elseif eldest_cache.type == util.assettype.prefab then
+                    logger.Res("    Ignored Unload {0}", eldest_assetpath)
+                    --- 不担心，会由assetbundle释放。假设所有的prefab都来自assetbundle
+                else
+                    logger.Res("    Resources.UnloadAsset {0}", eldest_assetpath)
+                    Resources.UnloadAsset(asset)
+                end
             end
         end
     end
 end
-
 
 return Cache
