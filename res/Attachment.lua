@@ -28,7 +28,7 @@ function Attachment:attach(attachpoint, loadfunc, callback)
         --- 这个可能异步，也可能同步，同步时attach.loading可能还没赋值，所以要用this
         attach.loading = nil
         attach.using = this
-        callback(this)
+        callback(assetorgo, err)
     end)
 
     --- 同步时loading又赋值了，所以这里清除掉
