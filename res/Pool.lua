@@ -78,7 +78,6 @@ function Pool:_load(prefabassetinfo, callback)
         return
     end
 
-
     local eldest_go
     local eldest_touch
 

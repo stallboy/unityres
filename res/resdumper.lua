@@ -1,11 +1,11 @@
 local Cache = require "res.Cache"
 local Pool = require "res.Pool"
+local Timer = require "common.timer"
 
 local resdumper = {}
 
 function resdumper.dump()
     ResUpdater.ResDumper.Dump();
-
     local t = {}
     Pool.dumpAll(function(info)
         table.insert(t, info)
@@ -14,6 +14,12 @@ function resdumper.dump()
 
     local t = {}
     Cache.dumpAll(function(info)
+        table.insert(t, info)
+    end)
+    UnityEngine.Debug.Log(table.concat(t, "\n"))
+
+    local t = {}
+    Timer.dumpAll(function(info)
         table.insert(t, info)
     end)
     UnityEngine.Debug.Log(table.concat(t, "\n"))
