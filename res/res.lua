@@ -13,7 +13,9 @@ local ipairs = ipairs
 local coroutine = coroutine
 
 
-local GetResPath = ResUpdater.Res.GetResPath
+local GetWWWResPath = ResUpdater.Res.GetResPath
+local GetAssetBundleLoadResPath = ResUpdater.Res.GetAssetBundleLoadResPath
+local GetResPath
 local EditorLoadSpriteAtPath = ResUpdater.Res.EditorLoadSpriteAtPath
 local EditorLoadAssetAtPath = ResUpdater.Res.EditorLoadAssetAtPath
 local cfgs
@@ -27,6 +29,11 @@ function res.initialize(cfg, assetbundleLoaderLimit, callback)
 
     local version = tonumber(string.sub(Application.unityVersion, 1, 3))
     local usewww = version < 5.4
+    if usewww then
+        GetResPath = GetWWWResPath
+    else
+        GetResPath = GetAssetBundleLoadResPath
+    end
     res.assetBundleLoader = AssetBundleLoader:new(assetbundleLoaderLimit or 5, usewww)
 
     for _, policy in pairs(cfg.assetcachepolicy.all) do
