@@ -2,6 +2,13 @@ local StateLoading = 1
 local StateUsing = 2
 local StateFree = 3
 
+--------------------------------------------------------
+--- res之上是Pool，这2者之上是loader
+--- 目的是模拟一个同步的机制
+--- future = loader.loadXxx(assetinfo, callback)
+--- 可以future:free 这样如果callback没有调用就不会调了
+--- 应用主要就使用这个api
+
 local Asset = {}
 
 function Asset:new(assetinfo)
@@ -44,7 +51,7 @@ end
 
 local GameObj = {}
 
-function GameObj:new(pool, assetinfo)
+function GameObj:new(pool, assetinfo, attachment)
     local instance = {}
     setmetatable(instance, self)
     self.__index = self
@@ -54,6 +61,7 @@ function GameObj:new(pool, assetinfo)
     instance.err = nil
     instance.state = StateLoading
     instance.wantfree = false
+    instance.attachment = attachment
     return instance
 end
 
@@ -65,7 +73,7 @@ function GameObj:free()
 
     if self.state == StateUsing then
         if self.go ~= nil then
-            self.pool:free(self.assetinfo, self.go)
+            self.pool:free(self.assetinfo, self.go, self.attachment)
         end
         self.state = StateFree
     end
@@ -75,7 +83,7 @@ function GameObj:_load(callback)
     self.pool:load(self.assetinfo, function(go, err)
         if self.wantfree then
             if go ~= nil then
-                self.pool:free(self.assetinfo, go)
+                self.pool:free(self.assetinfo, go, self.attachment)
             end
             self.state = StateFree
             return
@@ -88,6 +96,44 @@ function GameObj:_load(callback)
     end)
 end
 
+local Multi = {}
+
+function Multi:new(futures)
+    local instance = {}
+    setmetatable(instance, self)
+    self.__index = self
+    instance.futures = futures
+    instance.state = StateLoading
+
+    instance.allcnt = #futures
+    instance.assetorgos = {}
+    instance.cnt = 0
+    instance.errcnt = 0
+    return instance
+end
+
+function Multi:_load(callback)
+    for _, future in ipairs(self.futures) do
+        future:_load(function(assetorgo, err)
+            self.cnt = self.cnt + 1
+            self.assetorgos[self.cnt] = assetorgo
+            if err then
+                self.errcnt = self.errcnt + 1
+            end
+            if self.cnt == self.allcnt then
+                self.state = StateUsing
+                callback(self.assetorgos, self.errcnt, self)
+            end
+        end)
+    end
+end
+
+function Multi:free()
+    self.state = StateFree
+    for _, future in ipairs(self.futures) do
+        future:free()
+    end
+end
 
 
 local loader = {}
@@ -96,15 +142,41 @@ loader.StateUsing = StateUsing
 loader.StateFree = StateFree
 
 function loader.loadAsset(assetinfo, callback)
-    local asset = Asset:new(assetinfo)
-    asset:_load(callback)
-    return asset
+    if assetinfo == nil then
+        return
+    end
+    local future = Asset:new(assetinfo)
+    future:_load(callback)
+    return future
 end
 
-function loader.loadGameObject(pool, assetinfo, callback)
-    local gameobj = GameObj:new(pool, assetinfo)
-    gameobj:_load(callback)
-    return gameobj
+function loader.loadGameObject(pool, assetinfo, callback, attachment)
+    if pool == nil or assetinfo == nil then
+        return
+    end
+    local future = GameObj:new(pool, assetinfo, attachment)
+    future:_load(callback)
+    return future
+end
+
+function loader.multiloadAsset(assetinfos, callback)
+    local futures = {}
+    for _, assetinfo in ipairs(assetinfos) do
+        table.insert(futures, Asset:new(assetinfo))
+    end
+    local multiGo = Multi:new(futures)
+    multiGo:_load(callback)
+    return multiGo
+end
+
+function loader.multiloadGameObject(pool_assetinfos, callback)
+    local futures = {}
+    for _, v in ipairs(pool_assetinfos) do
+        table.insert(futures, GameObj:new(v.pool, v.assetinfo))
+    end
+    local multiGo = Multi:new(futures)
+    multiGo:_load(callback)
+    return multiGo
 end
 
 return loader

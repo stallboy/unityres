@@ -12,7 +12,6 @@ local pairs = pairs
 local ipairs = ipairs
 local coroutine = coroutine
 
-
 local GetWWWResPath = ResUpdater.Res.GetResPath
 local GetAssetBundleLoadResPath = ResUpdater.Res.GetAssetBundleLoadResPath
 local GetResPath
@@ -21,7 +20,20 @@ local EditorLoadAssetAtPath = ResUpdater.Res.EditorLoadAssetAtPath
 local cfgs
 local dependencyBundleCache
 
+--------------------------------------------------------
+--- res是最底层的接口，统一使用callback方式作为接口
+--- 无论是prefab，assetbundle，sprite，asset都统一这一个load接口来加载。
+--- load free要一一对应，无论load是否成功都会回调，应用都要记得调用free，同时只准在load回调之后才能free
+--- 内带自动cache机制，策略是lru
+------
+--- cfg 有assets.csv，assetcachepolicy.csv，由打包程序生成
+--- assets.csv 格式为 { assetpath: xx, abpath: xx, type: xx, location: xx, cachepolicy: xx }，
+--- assetcachepolicy.csv 格式为{ name : xx, lruSize : xx }
+--- type 可为 { assetbundle = 1, asset = 2, prefab = 3, sprite= 4  }； location 可为 { www = 1, resources = 2 }；
+
 local res = {}
+
+Cache.res = res
 
 function res.initialize(cfg, assetbundleLoaderLimit, callback)
     cfgs = cfg
@@ -36,12 +48,12 @@ function res.initialize(cfg, assetbundleLoaderLimit, callback)
     end
     res.assetBundleLoader = AssetBundleLoader:new(assetbundleLoaderLimit or 5, usewww)
 
-    for _, policy in pairs(cfg.assetcachepolicy.all) do
+    for _, policy in pairs(cfg.asset.assetcachepolicy.all) do
         policy.cache = Cache:new(policy.name, policy.lruSize)
     end
     dependencyBundleCache = Cache:new("dependencyBundle", 0) -- make bundle has cache
 
-    for _, assetinfo in pairs(cfg.assets.all) do
+    for _, assetinfo in pairs(cfg.asset.assets.all) do
         if assetinfo.type ~= util.assettype.assetbundle then
             assetinfo._assetpath_withassetsprefix = "assets/" .. assetinfo.assetpath -- make LoadAssetAsync easy
         end
@@ -140,7 +152,7 @@ function res.__load_asset_at_res(assetpath, callback)
     coroutine.resume(co)
 end
 
---- 就算load 失败，回调callback(nil)，也会增加引用计数，
+--- 就算load 失败，也会回调callback(nil)，并且也会增加引用计数，
 function res.load(assetinfo, callback)
     local assetpath = assetinfo.assetpath
     if logger.IsRes() then
@@ -228,39 +240,55 @@ function res.__load_withcache(assetpath, assettype, loadfunction, callback)
     end
 end
 
+--- 无论load成功失败，都需要free，以保证引用计数平衡
+--- 但要保证在load 返回之后，再free，要不然会出错的，这里没有提示
+--- 这个只free自己的计数，它的依赖仍然不释放计数，要等待真正它从cache.cached里也释放了，才释放它的依赖
 function res.free(assetinfo)
     if logger.IsRes() then
         logger.Res("----free {0}", assetinfo.assetpath)
     end
+    assetinfo.cache:_free(assetinfo.assetpath)
+end
 
-    if res.useEditorLoad then
-        assetinfo.cache:_free(assetinfo.assetpath)
-    else
-        if assetinfo.type == util.assettype.assetbundle then
-            res.__free_ab_withdependency(assetinfo.assetpath)
+
+--- 真正从cache.cached里也释放了，这时释放它的依赖
+function res._after_realfree(assetpath, type)
+    if logger.IsRes() then
+        logger.Res("----realfree {0}", assetpath)
+    end
+
+    if not res.useEditorLoad then
+        if type == util.assettype.assetbundle then
+            if res.manifest then
+                --- 释放这个assetbundle依赖的其他bundle
+                local deps = res.manifest:GetDirectDependencies(assetpath)
+                for _, dep in ipairs(deps.Table) do
+                    local cache = res.__get_cache(dep)
+                    cache:_free(dep)
+                end
+            else
+                logger.Error("manifest nil")
+            end
         else
-            --- 从assetbundle里出来的asset，load后持有所有依赖的引用，所以这里要全部释放
-            assetinfo.cache:_free(assetinfo.assetpath)
-            res.__free_ab_withdependency(assetinfo.abpath)
+            local assetinfo = cfgs.asset.assets.all[assetpath]
+            if assetinfo then
+                if assetinfo.location == util.assetlocation.www then
+                    --- 释放这个asset依赖的bundle
+                    local abp = assetinfo.abpath
+                    local cache = res.__get_cache(abp)
+                    cache:_free(abp)
+                end
+            else
+                logger.Error("res._after_realfree assetpath not in cfg.asset.assets {0}", assetpath)
+            end
         end
     end
 end
 
-function res.__free_ab_withdependency(abpath)
-    local abpaths = res.__get_dependences(abpath)
-    for _, abp in ipairs(abpaths) do
-        local cache = res.__get_cache(abp)
-        cache:_free(abp)
-    end
-end
-
-function res.__get_dependences(abpath)
+function res.__get_dependences(abpath) --- 这里是故意用GetDirectDependencies，故意有很多重复，来对应realfree的
     local abpaths = {}
     if res.manifest then
-        local deps = res.manifest:GetAllDependencies(abpath)
-        for _, dep in ipairs(deps.Table) do
-            table.insert(abpaths, dep)
-        end
+        res.__fill_dep(abpath, abpaths)
     else
         logger.Error("manifest nil")
     end
@@ -268,8 +296,16 @@ function res.__get_dependences(abpath)
     return abpaths
 end
 
+function res.__fill_dep(abpath, abpaths)
+    local deps = res.manifest:GetDirectDependencies(abpath)
+    for _, dep in ipairs(deps.Table) do
+        res.__fill_dep(dep, abpaths)
+        table.insert(abpaths, dep)
+    end
+end
+
 function res.__get_cache(assetpath)
-    local assetinfo = cfgs.assets.all[assetpath]
+    local assetinfo = cfgs.asset.assets.all[assetpath]
     if assetinfo then
         return assetinfo.cache
     else

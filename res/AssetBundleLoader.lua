@@ -11,6 +11,13 @@ local pairs = pairs
 local coroutine = coroutine
 local table_len = util.table_len
 
+--------------------------------------------------------
+--- res之下有AssetBundleLoader，内部使用
+--- 如果需要，外部也可直接用来加载bundle
+--- 有全局io请求限制，有请求缓存。
+--- limit实现了对WWW或LoadFromFileAsync的资源设限。要>=1。
+--- windows上测试结果为，当启动1000个WWW，可能会启动200个左右的线程，如果在editormode下启动10000个会提示too many thread崩溃
+
 local AssetBundleLoader = {}
 
 --- unity 新版本好像可以用 AssetBundle.LoadFromFileAsync 来加载了。

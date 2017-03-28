@@ -5,6 +5,13 @@ local logger = require "common.Logger"
 local GameObject = UnityEngine.GameObject
 local FarawayPosition = UnityEngine.Vector3(10000, 10000, 10000)
 
+--------------------------------------------------------
+--- res之上是Pool
+--- 这一层控制场景对象的cache，因为GameObject.Instantiate这个太费了。
+--- 可使用SetActive来pool这个场景对象，但有时SetActive也太费，可使用SetPosition把它放到摄像机视锥体外
+--- 允许设置额外的资源数量max_extra_res_size，用于控制内存大小
+--- 跟res接口基本一致load，free，但这里load如果失败，不要调用free
+
 local Pool = {}
 Pool.all = {}
 
