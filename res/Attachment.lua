@@ -16,7 +16,11 @@ function Attachment:new(before_using_free_callback)
     return instance
 end
 
-function Attachment:attach(attachkey, loadfunc, callback)
+function Attachment:attach(attachkey, thisloader, callback)
+    if thisloader == nil then ---请用detach，这里不要为nil
+        return
+    end
+
     local attach = self.attachments[attachkey]
     if attach == nil then
         --- 只有在请求加载完成后才释放正在用的，避免加载过程中出现空白。
@@ -24,22 +28,28 @@ function Attachment:attach(attachkey, loadfunc, callback)
         self.attachments[attachkey] = attach
     end
 
+    if thisloader:equals(attach.using) then
+        if attach.loading then
+            attach.loading:free()
+        end
+        return
+    end
+
+    if thisloader:equals(attach.loading) then
+        return
+    end
+
     if attach.loading then
         attach.loading:free()
     end
 
-    attach.loading = loadfunc(function(assetorgo, err, this)
+    attach.loading = thisloader
+    thisloader:load(function(assetorgo, err)
         self:_free_using(attachkey, attach)
-        --- 这个可能异步，也可能同步，同步时attach.loading可能还没赋值，所以要用this
         attach.loading = nil
-        attach.using = this
+        attach.using = thisloader
         callback(assetorgo, err)
     end)
-
-    --- 同步时loading又赋值了，所以这里清除掉
-    if attach.loading.state == loader.StateUsing then
-        attach.loading = nil
-    end
 end
 
 function Attachment:get(attachkey)

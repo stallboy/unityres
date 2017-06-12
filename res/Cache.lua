@@ -26,14 +26,14 @@ function Cache:new(name, maxsize)
 
     instance.name = name
     instance.maxsize = maxsize
-    instance.loaded = {} --- { assetpath : { asset: xx, err: xx, refcnt: xx, type: xx}, ... }, 这个不会删除，asset 为nil也保存
-    instance.cached = {} --- { assetpath : { asset: xx, err: xx, touch: xx, type: xx }, ... } , 用maxsize来在做lru
+    instance.loaded = {} --- { assetid : { asset: xx, err: xx, refcnt: xx, assetinfo: xx}, ... }, 这个不会删除，asset 为nil也保存
+    instance.cached = {} --- { assetid : { asset: xx, err: xx, touch: xx, assetinfo: xx }, ... } , 用maxsize来在做lru
     instance.serial = 0
     return instance
 end
 
 function Cache.dumpAll(print)
-    print("======== Cache.dumpAll")
+    print("======== Cache.dumpAll,,")
     for _, cache in pairs(Cache.all) do
         if not cache:_isempty() then
             cache:_dump(print)
@@ -46,28 +46,42 @@ function Cache:_isempty()
 end
 
 function Cache:_dump(print)
-    print("==== Cache=" .. self.name)
-    for assetpath, v in pairs(self.loaded) do
-        print("    + " .. assetpath .. ",refcnt=" .. v.refcnt .. (v.err and ",err=" .. v.err or ""))
+    print("==== Cache=" .. self.name .. ",,")
+    local sorted = {}
+    for assetid, _ in pairs(self.loaded) do
+        table.insert(sorted, assetid)
+    end
+    table.sort(sorted)
+    for _, assetid in ipairs(sorted) do
+        local v = self.loaded[assetid]
+        print("    + " .. v.assetinfo.assetpath .. ",refcnt=" .. v.refcnt .. (v.err and ",err=" .. v.err or ","))
     end
 
-    for assetpath, v in pairs(self.cached) do
-        print("    - " .. assetpath .. ",touch=" .. v.touch .. (v.err and ",err=" .. v.err or ""))
+    local sorted = {}
+    for assetid, _ in pairs(self.cached) do
+        table.insert(sorted, assetid)
+    end
+    table.sort(sorted)
+    for _, assetid in ipairs(sorted) do
+        local v = self.cached[assetid]
+        print("    - " .. v.assetinfo.assetpath .. ",touch=" .. v.touch .. (v.err and ",err=" .. v.err or ","))
     end
 end
 
 
-function Cache:_get(assetpath)
-    local a = self.loaded[assetpath]
+function Cache:_get(assetinfo)
+    local assetid = assetinfo.assetid
+    local a = self.loaded[assetid]
     if a then
         a.refcnt = a.refcnt + 1
+        --print("get addrefto", assetinfo.assetpath, a.refcnt)
         return a
     else
-        local c = self.cached[assetpath]
+        local c = self.cached[assetid]
         if c then
-            self.cached[assetpath] = nil --- 出cached，进loaded
-            a = { asset = c.asset, err = c.err, refcnt = 1, type = c.type }
-            self.loaded[assetpath] = a
+            self.cached[assetid] = nil --- 出cached，进loaded
+            a = { asset = c.asset, err = c.err, refcnt = 1, assetinfo = c.assetinfo }
+            self.loaded[assetid] = a
             return a
         else
             return nil
@@ -75,67 +89,71 @@ function Cache:_get(assetpath)
     end
 end
 
-function Cache:_put(assetpath, asset, err, type, refcount)
-    local c = self.cached[assetpath]
+function Cache:_put(assetinfo, asset, err, refcount)
+    local assetid = assetinfo.assetid
+    local c = self.cached[assetid]
     if c then
-        self.cached[assetpath] = nil --- 不应该到这里
-        logger.Error("cache.put in cached {0}", assetpath)
+        self.cached[assetid] = nil --- 不应该到这里
+        logger.Error("cache.put in cached {0}", assetinfo.assetpath)
     end
 
-    local a = self.loaded[assetpath]
+    local a = self.loaded[assetid]
     if a then
         a.refcnt = a.refcnt + refcount --- 不应该到这里
-        logger.Error("cache.put in loaded {0}", assetpath)
+        logger.Error("cache.put in loaded {0}", assetinfo.assetpath)
     else
-        --print("put", assetpath, refcount)
-        self.loaded[assetpath] = { asset = asset, err = err, refcnt = refcount, type = type } --- 入口，先入loaded
+        --print("put setref", assetinfo.assetpath, refcount)
+        self.loaded[assetid] = { asset = asset, err = err, refcnt = refcount, assetinfo = assetinfo } --- 入口，先入loaded
     end
 end
 
-function Cache:_free(assetpath)
-    local a = self.loaded[assetpath]
+function Cache:_free(assetinfo)
+    local assetid = assetinfo.assetid
+    local a = self.loaded[assetid]
     if a then
         a.refcnt = a.refcnt - 1
         --print("free", assetpath, a.refcnt)
         if a.refcnt <= 0 then
-            self.loaded[assetpath] = nil --- 出loaded，进cached
+            self.loaded[assetid] = nil --- 出loaded，进cached
             self.serial = self.serial + 1
-            self.cached[assetpath] = { asset = a.asset, err = a.err, touch = self.serial, type = a.type }
+            self.cached[assetid] = { asset = a.asset, err = a.err, touch = self.serial, assetinfo = a.assetinfo }
             self:_purge()
         end
     else
-        logger.Error("cache.free not in loaded {0}", assetpath) --- 不应该到这里
+        logger.Error("cache.free not in loaded {0}", assetinfo.assetpath) --- 不应该到这里
     end
 end
 
 function Cache:_purge()
     while util.table_len(self.cached) > self.maxsize do
-        local eldest_assetpath
+        local eldest_assetid
         local eldest_cache
-        for assetpath, cache in pairs(self.cached) do
-            if eldest_assetpath == nil or cache.touch < eldest_cache.touch then
-                eldest_assetpath = assetpath
+        for assetid, cache in pairs(self.cached) do
+            if eldest_assetid == nil or cache.touch < eldest_cache.touch then
+                eldest_assetid = assetid
                 eldest_cache = cache
             end
         end
 
-        if eldest_assetpath then
-            self.cached[eldest_assetpath] = nil --- 出口
+        if eldest_assetid then
+            self.cached[eldest_assetid] = nil --- 出口
             local asset = eldest_cache.asset
+            local assetinfo = eldest_cache.assetinfo
+            local type = assetinfo.type
             if asset then
-                if eldest_cache.type == util.assettype.assetbundle then
-                    logger.Res("    AssetBundle.Unload {0}", eldest_assetpath)
+                if type == util.assettype.assetbundle then
+                    logger.Res("    AB.Unload {0}", assetinfo.assetpath)
                     asset:Unload(true)
                     --- assetbundle都没有引用了，那些个依赖它的prefab，asset肯定也没有应用了，可以放心unload(true)
-                elseif eldest_cache.type == util.assettype.prefab then
-                    logger.Res("    Ignored Unload {0}", eldest_assetpath)
+                elseif type == util.assettype.prefab then
+                    --logger.Res("    Ignored Unload {0}", eldest_assetid)
                     --- 不担心，会由assetbundle释放。假设所有的prefab都来自assetbundle
                 else
-                    logger.Res("    Resources.UnloadAsset {0}", eldest_assetpath)
+                    logger.Res("    Resources.UnloadAsset {0}", assetinfo.assetpath)
                     Resources.UnloadAsset(asset)
                 end
             end
-            Cache.res._after_realfree(eldest_assetpath, eldest_cache.type)
+            Cache.res._realfree(assetinfo)
         end
     end
 end
