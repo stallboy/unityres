@@ -1,11 +1,13 @@
-local AssetBundleLoader = require "res.AssetBundleLoader"
 local Cache = require "res.Cache"
-local CallbackCache = require "res.CallbackCache"
 local util = require "res.util"
 local logger = require "common.Logger"
+local WWW = UnityEngine.WWW
+local AssetBundle = UnityEngine.AssetBundle
+
+local pairs = pairs
+local coroutine = coroutine
 
 local Resources = UnityEngine.Resources
-local Application = UnityEngine.Application
 local Yield = UnityEngine.Yield
 
 local pairs = pairs
@@ -17,8 +19,6 @@ local GetAssetBundleLoadResPath = ResUpdater.Res.GetAssetBundleLoadResPath
 local GetResPath
 local EditorLoadSpriteAtPath = ResUpdater.Res.EditorLoadSpriteAtPath
 local EditorLoadAssetAtPath = ResUpdater.Res.EditorLoadAssetAtPath
-local cfgs
-local dependencyBundleCache
 
 --------------------------------------------------------
 --- res是最底层的接口，统一使用callback方式作为接口
@@ -27,7 +27,7 @@ local dependencyBundleCache
 --- 内带自动cache机制，策略是lru
 ------
 --- cfg 有assets.csv，assetcachepolicy.csv，由打包程序生成
---- assets.csv 格式为 { assetpath: xx, abpath: xx, type: xx, location: xx, cachepolicy: xx }，
+--- assets.csv 格式为 { assetpath=xx, assetid=xx, RefDirectDeps: {}, type: xx, location: xx, cachepolicy: xx }，
 --- assetcachepolicy.csv 格式为{ name : xx, lruSize : xx }
 --- type 可为 { assetbundle = 1, asset = 2, prefab = 3, sprite= 4  }； location 可为 { www = 1, resources = 2 }；
 
@@ -35,99 +35,88 @@ local res = {}
 
 Cache.res = res
 
-function res.initialize(cfg, assetbundleLoaderLimit, callback)
-    cfgs = cfg
-    res.useEditorLoad = UnityEngine.Application.isEditor and not ResUpdater.Res.useAssetBundleInEditor
-
-    local version = tonumber(string.sub(Application.unityVersion, 1, 3))
-    local usewww = version < 5.4
-    if usewww then
-        GetResPath = GetWWWResPath
-    else
-        GetResPath = GetAssetBundleLoadResPath
-    end
-    res.assetBundleLoader = AssetBundleLoader:new(assetbundleLoaderLimit or 5, usewww)
-
-    for _, policy in pairs(cfg.asset.assetcachepolicy.all) do
-        policy.cache = Cache:new(policy.name, policy.lruSize)
-    end
-    dependencyBundleCache = Cache:new("dependencyBundle", 0) -- make bundle has cache
-
-    for _, assetinfo in pairs(cfg.asset.assets.all) do
-        if assetinfo.type ~= util.assettype.assetbundle then
-            assetinfo._assetpath_withassetsprefix = "assets/" .. assetinfo.assetpath -- make LoadAssetAsync easy
-        end
-        assetinfo.cache = assetinfo.RefCachepolicy.cache
-    end
-
-    res._runnings = CallbackCache:new() -- assetinfo.assetpath 作为key
-    res.manifest = nil
-
-    if res.useEditorLoad then
-        callback()
-    else
-        local abpath = "manifest"
-        local assetpath = "assetbundlemanifest"
-        res.__load_ab(abpath, function(ab, aberr)
-            res.__load_asset_at_ab(assetpath, ab, abpath, util.assettype.asset, function(asset, asseterr)
-                res.manifest = asset
-                if ab then
-                    ab:Unload(false)
-                end
-                callback(asseterr or aberr)
-            end)
-        end)
-    end
-end
-
-function res.__load_ab(abpath, callback)
-    logger.Res("    AssetBundleLoader {0}", abpath)
-    res.assetBundleLoader:load(GetResPath(abpath), function(wwwOrAssetBundleCreateRequest)
-        local error
-        if res.assetBundleLoader.usewww then
-            error = wwwOrAssetBundleCreateRequest.error
-        end
-
-        if error == nil then
-            local ab = wwwOrAssetBundleCreateRequest.assetBundle
-            if ab then
-                callback(ab)
-            else
-                local err = "wwwOrAssetBundleCreateRequest not assetBundle " .. abpath
-                logger.Error(err)
-                callback(nil, err)
-            end
+function res.__load_asset_at_res(assetinfo, callback)
+    local co = coroutine.create(function()
+        logger.Res("    Resources.LoadAsync {0}", assetinfo.assetpath)
+        local req = Resources.LoadAsync(assetinfo.assetpath)
+        Yield(req)
+        local asset = req.asset
+        if asset then
+            callback(asset)
         else
-            local err = "wwww load " .. abpath .. ", err " .. error
+            local err = "Resources has no asset " .. assetinfo.assetpath
             logger.Error(err)
             callback(nil, err)
         end
     end)
+    coroutine.resume(co)
 end
 
-function res.__load_asset_at_ab(assetpath, ab, abpath, assettype, callback)
+function res.__load_ab_usewww(assetinfo, callback)
+    local path = GetResPath(assetinfo.assetpath)
+    logger.Res("    WWW {0}", path)
+    local co = coroutine.create(function()
+        local www = WWW(path)
+        Yield(www)
+        local error = www.error
+        if error == nil then
+            local ab = www.assetBundle
+            if ab then
+                callback(ab, nil)
+            else
+                local err = "www.assetBundle nil " .. path
+                logger.Error(err)
+                callback(nil, err)
+            end
+        else
+            local err = "wwww error " .. assetinfo.assetpath .. ",path " .. path .. ", err " .. error
+            logger.Error(err)
+            callback(nil, err)
+        end
+        www:Dispose()
+    end)
+    coroutine.resume(co)
+end
+
+function res.__load_ab(assetinfo, callback)
+    local path = GetResPath(assetinfo.assetpath)
+    logger.Res("    AB.LoadFromFileAsync {0}", path)
+    local co = coroutine.create(function()
+        local assetBundleCreateRequest = AssetBundle.LoadFromFileAsync(path)
+        Yield(assetBundleCreateRequest)
+        local ab = assetBundleCreateRequest.assetBundle
+        if ab then
+            callback(ab, nil)
+        else
+            local err = "LoadFromFileAsync.assetBundle nil " .. path
+            logger.Error(err)
+            callback(nil, err)
+        end
+    end)
+    coroutine.resume(co)
+end
+
+function res.__load_asset_at_ab(assetinfo, ab, aberr, callback)
     if ab == nil then
-        callback(nil, nil)
+        callback(nil, aberr)
         return
     end
 
     local co = coroutine.create(function()
-        logger.Res("    AssetBundle.LoadAssetAsync {0} from {1}", assetpath, abpath)
+        logger.Res("    LoadAssetAsync {0}", assetinfo.assetpath)
+        local fixedassetpath = "assets/" .. assetinfo.assetpath
         local req
-        if assettype ~= util.assettype.sprite then
-            req = ab:LoadAssetAsync(assetpath)
+        if assetinfo.type ~= util.assettype.sprite then
+            req = ab:LoadAssetAsync(fixedassetpath)
         else
-            req = ab:LoadAssetAsync(assetpath, "UnityEngine.Sprite")
+            req = ab:LoadAssetAsync(fixedassetpath, "UnityEngine.Sprite")
         end
         Yield(req)
-        if req.asset then
-            callback(req.asset) -- ab not unload
+        local asset = req.asset
+        if asset then
+            callback(asset) -- ab not unload
         else
-            local err = "assetBundle " .. abpath .. " include "
-            for _, include in ipairs(ab:GetAllAssetNames().Table) do
-                err = err .. include .. ","
-            end
-            err = err .. " LoadAssetAsync err " .. assetpath
+            local err = "LoadAssetAsync err " .. assetinfo.assetpath
             logger.Error(err)
             callback(nil, err)
         end
@@ -135,182 +124,143 @@ function res.__load_asset_at_ab(assetpath, ab, abpath, assettype, callback)
     coroutine.resume(co)
 end
 
-
-function res.__load_asset_at_res(assetpath, callback)
-    local co = coroutine.create(function()
-        logger.Res("    Resources.LoadAsync {0}", assetpath)
-        local req = Resources.LoadAsync(assetpath)
-        Yield(req)
-        if req.asset then
-            callback(req.asset)
-        else
-            local err = "Resources has no asset " .. assetpath
-            logger.Error(err)
-            callback(nil, err)
-        end
-    end)
-    coroutine.resume(co)
-end
-
---- 就算load 失败，也会回调callback(nil)，并且也会增加引用计数，
-function res.load(assetinfo, callback)
+function res._loadInEditor(assetinfo, callback)
     local assetpath = assetinfo.assetpath
-    if logger.IsRes() then
-        logger.Res("++++load {0}", assetpath)
+    logger.Res("++++loadInEditor {0}", assetpath)
+
+    local cachedasset = assetinfo.RefCachepolicy.cache:_get(assetinfo)
+    if cachedasset then
+        callback(cachedasset.asset, cachedasset.err)
+    else
+        logger.Res("    EditorLoadAssetAtPath {0}", assetpath)
+        local loadfunc = EditorLoadAssetAtPath
+        if assetinfo.type == util.assettype.sprite then
+            loadfunc = EditorLoadSpriteAtPath
+        end
+        local asset = loadfunc("assets/" .. assetinfo.assetpath)
+        if asset then
+            assetinfo.RefCachepolicy.cache:_put(assetinfo, asset, nil, 1)
+            callback(asset)
+        else
+            local err = "AssetDatabase has no asset " .. assetpath
+            logger.Error(err)
+            assetinfo.RefCachepolicy.cache:_put(assetinfo, asset, err, 1)
+            callback(nil, err)
+        end
+    end
+end
+
+function res._realfreeInEditor(assetinfo)
+    logger.Res("----realfreeInEditor {0}", assetinfo.assetpath)
+end
+
+
+function res.initialize(assetcachepolicys, usewww)
+    res.useEditorLoad = UnityEngine.Application.isEditor and not ResUpdater.Res.useAssetBundleInEditor
+    if usewww then
+        res.__load_ab = res.__load_ab_usewww
+        GetResPath = GetWWWResPath
+    else
+        GetResPath = GetAssetBundleLoadResPath
     end
 
+    for _, policy in pairs(assetcachepolicys) do
+        policy.cache = Cache:new(policy.name, policy.lruSize)
+    end
+
+    res._loadingAssetid2CallbackLists = {} -- {assetid: { cb1, cb2 },  }
+
     if res.useEditorLoad then
-        local cachedasset = assetinfo.cache:_get(assetpath)
-        if cachedasset then
-            callback(cachedasset.asset, cachedasset.err)
+        res.load = res._loadInEditor
+        res._realfree = res._realfreeInEditor
+    end
+end
+
+
+--- 就算load 失败，也会回调callback(nil)，并且也会增加引用计数，
+function res.load(assetinfo, resLoadCallback)
+    logger.Res("++++load {0}", assetinfo.assetpath)
+    res._doload(assetinfo, resLoadCallback)
+end
+
+function res._doload(assetinfo, resLoadCallback)
+    --- 在cache中，直接callback
+    local cachedasset = assetinfo.RefCachepolicy.cache:_get(assetinfo)
+    if cachedasset then
+        resLoadCallback(cachedasset.asset, cachedasset.err)
+        return
+    end
+
+    --- 在loading过程中,加到callback列表里
+    local assetid = assetinfo.assetid
+    local cbs = res._loadingAssetid2CallbackLists[assetid]
+    if cbs then
+        table.insert(cbs, resLoadCallback)
+        return
+    end
+
+    cbs = { resLoadCallback }
+    res._loadingAssetid2CallbackLists[assetid] = cbs
+    local putCacheThenCallback = function(asset, err)
+        --- 加载结束，放到cache，调用所有callback，(要先put再调用callback，可能callback里会发起新的load）
+        local thisCbs = res._loadingAssetid2CallbackLists[assetid]
+        local thisCbsCount = #thisCbs
+        assetinfo.RefCachepolicy.cache:_put(assetinfo, asset, err, thisCbsCount)
+        res._loadingAssetid2CallbackLists[assetid] = nil
+        for _, cb in ipairs(thisCbs) do
+            cb(asset, err)
+        end
+    end
+
+    --- 开始load
+    if assetinfo.location == util.assetlocation.resources then
+        res.__load_asset_at_res(assetinfo, putCacheThenCallback)
+    elseif assetinfo.type == util.assettype.assetbundle then
+        local depcnt = #assetinfo.RefDirectDeps
+        if depcnt == 0 then
+            res.__load_ab(assetinfo, putCacheThenCallback)
         else
-            logger.Res("    EditorLoadAssetAtPath {0}", assetpath)
-            local loadfunc = EditorLoadAssetAtPath
-            if assetinfo.type == util.assettype.sprite then
-                loadfunc = EditorLoadSpriteAtPath
-            end
-            local asset = loadfunc(assetinfo._assetpath_withassetsprefix)
-            if asset then
-                assetinfo.cache:_put(assetpath, asset, nil, assetinfo.type, 1)
-                callback(asset)
-            else
-                local err = "AssetDatabase has no asset " .. assetpath
-                logger.Error(err)
-                assetinfo.cache:_put(assetpath, asset, err, assetinfo.type, 1)
-                callback(nil, err)
+            local deploadedcnt = 0
+            for _, depassetinfo in ipairs(assetinfo.RefDirectDeps) do
+                res._doload(depassetinfo, function()
+                    deploadedcnt = deploadedcnt + 1
+                    if deploadedcnt == depcnt then
+                        res.__load_ab(assetinfo, putCacheThenCallback)
+                    end
+                end)
             end
         end
     else
-        if assetinfo.location == util.assetlocation.resources then
-            res.__load_withcache(assetinfo.assetpath, assetinfo.type, res.__load_asset_at_res, callback)
-        elseif assetinfo.type == util.assettype.assetbundle then
-            res.__load_ab_withdependency_withcache(assetpath, callback)
-        else
-            --- 这里要让 asset 依赖的 assetbundle 都 refcnt +1，所以得从头开始加
-            res.__load_ab_withdependency_withcache(assetinfo.abpath, function(ab, aberr)
-                res.__load_withcache(assetinfo.assetpath, assetinfo.type, function(_, callb)
-                    res.__load_asset_at_ab(assetinfo._assetpath_withassetsprefix, ab, assetinfo.abpath, assetinfo.type, callb)
-                end, function(asset, asseterr)
-                    callback(asset, asseterr or aberr)
-                end)
-            end)
+        local depcnt = #assetinfo.RefDirectDeps
+        if depcnt ~= 1 then
+            logger.Error("asset {0} depcnt {1} not 1", assetinfo.assetpath, depcnt)
         end
-    end
-end
 
-function res.__load_ab_withdependency_withcache(abpath, callback)
-    local abpaths = res.__get_dependences(abpath)
-    local reqcnt = #abpaths
-    local cnt = 0
-    local abresult = {}
-    for _, abp in ipairs(abpaths) do
-        res.__load_withcache(abp, util.assettype.assetbundle, res.__load_ab, function(ab, err)
-            abresult[abp] = ab
-            cnt = cnt + 1
-            if cnt == reqcnt then
-                callback(abresult[abpath], err)
-            end
+        local abassetinfo = assetinfo.RefDirectDeps[1]
+        res._doload(abassetinfo, function(ab, aberr)
+            res.__load_asset_at_ab(assetinfo, ab, aberr, putCacheThenCallback)
         end)
     end
 end
 
-function res.__load_withcache(assetpath, assettype, loadfunction, callback)
-    local cache = res.__get_cache(assetpath)
-    local cachedasset = cache:_get(assetpath)
-    if cachedasset then
-        --- result cache
-        callback(cachedasset.asset, cachedasset.err)
-    else
-        --- request cache
-        local cbs = res._runnings.path2cbs[assetpath]
-        if cbs then
-            res._runnings:addcallback(cbs, callback)
-        else
-            res._runnings:addpath(assetpath, callback)
-            loadfunction(assetpath, function(asset, err)
-                local cbs = res._runnings:removepath(assetpath)
-                local count = util.table_len(cbs)
 
-                cache:_put(assetpath, asset, err, assettype, count)
-                for _, cb in pairs(cbs) do
-                    cb(asset, err)
-                end
-            end)
-        end
-    end
-end
 
 --- 无论load成功失败，都需要free，以保证引用计数平衡
 --- 但要保证在load 返回之后，再free，要不然会出错的，这里没有提示
 --- 这个只free自己的计数，它的依赖仍然不释放计数，要等待真正它从cache.cached里也释放了，才释放它的依赖
 function res.free(assetinfo)
-    if logger.IsRes() then
-        logger.Res("----free {0}", assetinfo.assetpath)
-    end
-    assetinfo.cache:_free(assetinfo.assetpath)
+    logger.Res("----free {0}", assetinfo.assetpath)
+    assetinfo.RefCachepolicy.cache:_free(assetinfo)
 end
-
 
 --- 真正从cache.cached里也释放了，这时释放它的依赖
-function res._after_realfree(assetpath, type)
-    if logger.IsRes() then
-        logger.Res("----realfree {0}", assetpath)
-    end
-
-    if not res.useEditorLoad then
-        if type == util.assettype.assetbundle then
-            if res.manifest then
-                --- 释放这个assetbundle依赖的其他bundle
-                local deps = res.manifest:GetDirectDependencies(assetpath)
-                for _, dep in ipairs(deps.Table) do
-                    local cache = res.__get_cache(dep)
-                    cache:_free(dep)
-                end
-            else
-                logger.Error("manifest nil")
-            end
-        else
-            local assetinfo = cfgs.asset.assets.all[assetpath]
-            if assetinfo then
-                if assetinfo.location == util.assetlocation.www then
-                    --- 释放这个asset依赖的bundle
-                    local abp = assetinfo.abpath
-                    local cache = res.__get_cache(abp)
-                    cache:_free(abp)
-                end
-            else
-                logger.Error("res._after_realfree assetpath not in cfg.asset.assets {0}", assetpath)
-            end
-        end
-    end
-end
-
-function res.__get_dependences(abpath) --- 这里是故意用GetDirectDependencies，故意有很多重复，来对应realfree的
-    local abpaths = {}
-    if res.manifest then
-        res.__fill_dep(abpath, abpaths)
-    else
-        logger.Error("manifest nil")
-    end
-    table.insert(abpaths, abpath)
-    return abpaths
-end
-
-function res.__fill_dep(abpath, abpaths)
-    local deps = res.manifest:GetDirectDependencies(abpath)
-    for _, dep in ipairs(deps.Table) do
-        res.__fill_dep(dep, abpaths)
-        table.insert(abpaths, dep)
-    end
-end
-
-function res.__get_cache(assetpath)
-    local assetinfo = cfgs.asset.assets.all[assetpath]
-    if assetinfo then
-        return assetinfo.cache
-    else
-        return dependencyBundleCache
+function res._realfree(assetinfo)
+    logger.Res("----realfree {0}", assetinfo.assetpath)
+    --- 释放这个assetbundle依赖的其他bundle
+    for _, dep in ipairs(assetinfo.RefDirectDeps) do
+        dep.RefCachepolicy.cache:_free(dep)
     end
 end
 
 return res
+

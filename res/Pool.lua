@@ -39,7 +39,7 @@ end
 
 ----- 调试相关
 function Pool.dumpAll(print)
-    print("======== Pool.dumpAll")
+    print("======== Pool.dumpAll,,")
     for _, pool in pairs(Pool.all) do
         if not pool:_isempty() then
             pool:_dump(print)
@@ -52,15 +52,22 @@ function Pool:_isempty()
 end
 
 function Pool:_dump(print)
-    print("==== Pool=" .. self.name .. "  ===  using=" .. self.usingResCount .. "/" .. self.usingObjCount .. ", extra=" .. self.extraResCount .. "/" .. self.extraObjCount)
-    for ai, aicache in pairs(self.cache) do
+    print("==== Pool=" .. self.name .. ",===  using=" .. self.usingResCount .. "/" .. self.usingObjCount .. ",extra=" .. self.extraResCount .. "/" .. self.extraObjCount)
+    local sorted = {}
+    for ai, _ in pairs(self.cache) do
+        table.insert(sorted, ai)
+    end
+    table.sort(sorted, function(a, b) return a.assetpath < b.assetpath end)
+    for _, ai in ipairs(sorted) do
+        local aicache = self.cache[ai]
         if aicache.usingCnt > 0 then
-            print("    + " .. ai.assetpath .. ",usingCnt=" .. aicache.usingCnt .. ",poolCnt=" .. aicache.poolCnt .. "," .. util.table_len(aicache.pool) .. ",poolTouch=" .. aicache.poolTouch)
+            print("    + " .. ai.assetpath .. ",usingCnt=" .. aicache.usingCnt .. ",poolCnt=" .. aicache.poolCnt .. "=" .. util.table_len(aicache.pool) .. "/poolTouch=" .. aicache.poolTouch)
         end
     end
-    for ai, aicache in pairs(self.cache) do
+    for _, ai in ipairs(sorted) do
+        local aicache = self.cache[ai]
         if aicache.usingCnt <= 0 then
-            print("    - " .. ai.assetpath .. ",usingCnt=" .. aicache.usingCnt .. ",poolCnt=" .. aicache.poolCnt .. "," .. util.table_len(aicache.pool) .. ",poolTouch=" .. aicache.poolTouch)
+            print("    - " .. ai.assetpath .. ",usingCnt=" .. aicache.usingCnt .. ",poolCnt=" .. aicache.poolCnt .. "=" .. util.table_len(aicache.pool) .. "/poolTouch=" .. aicache.poolTouch)
         end
     end
 end
@@ -68,18 +75,26 @@ end
 ----- 接口，这里的load跟res.load不同，如果结果为nil，是不需要调用free的
 function Pool:load(prefabassetinfo, callback)
     logger.Pool("load {0}", prefabassetinfo.assetpath)
-    self:_load(prefabassetinfo, callback)
+    self:_doload(prefabassetinfo, callback)
 end
 
 function Pool:free(prefabassetinfo, gameobject, attachedData)
     logger.Pool("free {0}", prefabassetinfo.assetpath)
-    if self:_free(prefabassetinfo, gameobject, attachedData) then
+    if self:_dofree(prefabassetinfo, gameobject, attachedData) then
         self:_purge()
     end
 end
 
+function Pool:clear()
+    logger.Pool("clear")
+    local old = self.max_extra_go_size
+    self.max_extra_go_size = 0
+    self:_purge()
+    self.max_extra_go_size = old
+end
+
 ----- 实现
-function Pool:_load(prefabassetinfo, callback)
+function Pool:_doload(prefabassetinfo, callback)
     if prefabassetinfo == nil then
         callback(nil, "assetinfo nil")
         return
@@ -138,7 +153,7 @@ function Pool:_load(prefabassetinfo, callback)
 end
 
 
-function Pool:_free(prefabassetinfo, gameobject, attachedData)
+function Pool:_dofree(prefabassetinfo, gameobject, attachedData)
     if prefabassetinfo == nil then
         logger.Error("pool.free prefabassetinfo=nil")
         return false

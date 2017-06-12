@@ -17,16 +17,19 @@ function util.table_isempty(a)
     return true
 end
 
-function util.dump(mod)
+function util.dump(...)
     local t = {}
-    mod.dumpAll(function(info)
-        table.insert(t, info)
-    end)
+    for _, mod in ipairs { ... } do
+        mod.dumpAll(function(info)
+            table.insert(t, info)
+        end)
+    end
+
     UnityEngine.Debug.Log(table.concat(t, "\n"))
 end
 
 
-util.assettype = { assetbundle = 1, asset = 2, prefab = 3, sprite= 4 }
+util.assettype = { assetbundle = 1, asset = 2, prefab = 3, sprite = 4 }
 util.assetlocation = { www = 1, resources = 2 }
 
 return util

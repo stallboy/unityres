@@ -2,6 +2,7 @@ local StateLoading = 1
 local StateUsing = 2
 local StateFree = 3
 
+local res = require "res.res"
 --------------------------------------------------------
 --- res之上是Pool，这2者之上是loader
 --- 目的是模拟一个同步的机制
@@ -34,10 +35,10 @@ function Asset:free()
     end
 end
 
-function Asset:_load(callback)
-    self.assetinfo:load(function(asset, err)
+function Asset:load(callback)
+    res.load(self.assetinfo, function(asset, err)
         if self.wantfree then
-            self.assetinfo:free()
+            res.free(self.assetinfo)
             self.state = StateFree
             return
         end
@@ -47,6 +48,10 @@ function Asset:_load(callback)
         self.err = err
         callback(asset, err, self)
     end)
+end
+
+function Asset:equals(other)
+    return other and other.__index == Asset and other.assetinfo == self.assetinfo
 end
 
 local GameObj = {}
@@ -79,7 +84,7 @@ function GameObj:free()
     end
 end
 
-function GameObj:_load(callback)
+function GameObj:load(callback)
     self.pool:load(self.assetinfo, function(go, err)
         if self.wantfree then
             if go ~= nil then
@@ -95,6 +100,11 @@ function GameObj:_load(callback)
         callback(go, err, self)
     end)
 end
+
+function GameObj:equals(other)
+    return other and other.__index == GameObj and other.assetinfo == self.assetinfo
+end
+
 
 local Multi = {}
 
@@ -112,11 +122,17 @@ function Multi:new(futures)
     return instance
 end
 
-function Multi:_load(callback)
-    for _, future in ipairs(self.futures) do
-        future:_load(function(assetorgo, err)
+function Multi:load(callback)
+    if self.allcnt == 0 then
+        self.state = StateUsing
+        callback(self.assetorgos, self.errcnt, self)
+        return
+    end
+
+    for idx, future in ipairs(self.futures) do
+        future:load(function(assetorgo, err)
             self.cnt = self.cnt + 1
-            self.assetorgos[self.cnt] = assetorgo
+            self.assetorgos[idx] = assetorgo
             if err then
                 self.errcnt = self.errcnt + 1
             end
@@ -135,27 +151,25 @@ function Multi:free()
     end
 end
 
+function Multi:equals(_)
+    return false
+end
 
 local loader = {}
+
 loader.StateLoading = StateLoading
 loader.StateUsing = StateUsing
 loader.StateFree = StateFree
 
 function loader.loadAsset(assetinfo, callback)
-    if assetinfo == nil then
-        return
-    end
     local future = Asset:new(assetinfo)
-    future:_load(callback)
+    future:load(callback)
     return future
 end
 
 function loader.loadGameObject(pool, assetinfo, callback, attachment)
-    if pool == nil or assetinfo == nil then
-        return
-    end
     local future = GameObj:new(pool, assetinfo, attachment)
-    future:_load(callback)
+    future:load(callback)
     return future
 end
 
@@ -165,7 +179,7 @@ function loader.multiloadAsset(assetinfos, callback)
         table.insert(futures, Asset:new(assetinfo))
     end
     local multiGo = Multi:new(futures)
-    multiGo:_load(callback)
+    multiGo:load(callback)
     return multiGo
 end
 
@@ -175,8 +189,39 @@ function loader.multiloadGameObject(pool_assetinfos, callback)
         table.insert(futures, GameObj:new(v.pool, v.assetinfo))
     end
     local multiGo = Multi:new(futures)
-    multiGo:_load(callback)
+    multiGo:load(callback)
     return multiGo
+end
+
+function loader.multiloadMixed(goargs, assetargs, callback)
+    local mixed = loader.makeMulti(goargs, assetargs)
+    mixed:load(callback)
+    return mixed
+end
+
+function loader.makeAsset(assetinfo)
+    return Asset:new(assetinfo)
+end
+
+function loader.makeGameObj(pool, assetinfo, attachment)
+    return GameObj:new(pool, assetinfo, attachment)
+end
+
+function loader.makeMulti(goargs, assetargs)
+    --    混 合 加 载 gameobject 和 asset ， 例 如 加 载 人 物 部 件 模 型 ， 同 时 加 载 3 S 材 质
+    --    示 例 ：
+    --    local loadargs = {
+    --        { isGameObject = true, pool = module.pool.attachment, assetinfo = assetinfo, callback = callback, },
+    --        { isAsset = true, assetinfo = assetinfo, },
+    --    }
+    local futures = {}
+    for _, arg in pairs(goargs) do
+        table.insert(futures, GameObj:new(arg.pool, arg.assetinfo, arg.attachment))
+    end
+    for _, arg in pairs(assetargs) do
+        table.insert(futures, Asset:new(arg.assetinfo))
+    end
+    return Multi:new(futures)
 end
 
 return loader
