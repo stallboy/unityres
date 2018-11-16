@@ -14,9 +14,8 @@ local pairs = pairs
 local ipairs = ipairs
 local coroutine = coroutine
 
-local GetWWWResPath = ResUpdater.Res.GetResPath
-local GetAssetBundleLoadResPath = ResUpdater.Res.GetAssetBundleLoadResPath
-local GetResPath
+
+local GetResPath = ResUpdater.Res.GetAssetBundleLoadResPath
 local EditorLoadSpriteAtPath = ResUpdater.Res.EditorLoadSpriteAtPath
 local EditorLoadAssetAtPath = ResUpdater.Res.EditorLoadAssetAtPath
 
@@ -52,31 +51,6 @@ function res.__load_asset_at_res(assetinfo, callback)
     coroutine.resume(co)
 end
 
-function res.__load_ab_usewww(assetinfo, callback)
-    local path = GetResPath(assetinfo.assetpath)
-    logger.Res("    WWW {0}", path)
-    local co = coroutine.create(function()
-        local www = WWW(path)
-        Yield(www)
-        local error = www.error
-        if error == nil then
-            local ab = www.assetBundle
-            if ab then
-                callback(ab, nil)
-            else
-                local err = "www.assetBundle nil " .. path
-                logger.Error(err)
-                callback(nil, err)
-            end
-        else
-            local err = "wwww error " .. assetinfo.assetpath .. ",path " .. path .. ", err " .. error
-            logger.Error(err)
-            callback(nil, err)
-        end
-        www:Dispose()
-    end)
-    coroutine.resume(co)
-end
 
 function res.__load_ab(assetinfo, callback)
     local path = GetResPath(assetinfo.assetpath)
@@ -155,13 +129,11 @@ function res._realfreeInEditor(assetinfo)
 end
 
 
-function res.initialize(assetcachepolicys, usewww)
+function res.initialize(assetcachepolicys)
     res.useEditorLoad = UnityEngine.Application.isEditor and not ResUpdater.Res.useAssetBundleInEditor
-    if usewww then
-        res.__load_ab = res.__load_ab_usewww
-        GetResPath = GetWWWResPath
-    else
-        GetResPath = GetAssetBundleLoadResPath
+	res.useEditorLoad then
+        res.load = res._loadInEditor
+        res._realfree = res._realfreeInEditor
     end
 
     for _, policy in pairs(assetcachepolicys) do
@@ -169,11 +141,6 @@ function res.initialize(assetcachepolicys, usewww)
     end
 
     res._loadingAssetid2CallbackLists = {} -- {assetid: { cb1, cb2 },  }
-
-    if res.useEditorLoad then
-        res.load = res._loadInEditor
-        res._realfree = res._realfreeInEditor
-    end
 end
 
 

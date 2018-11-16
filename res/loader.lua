@@ -6,8 +6,9 @@ local res = require "res.res"
 --------------------------------------------------------
 --- res之上是Pool，这2者之上是loader
 --- 目的是模拟一个同步的机制
---- future = loader.loadXxx(assetinfo, callback)
---- 可以future:free 这样如果callback没有调用就不会调了
+--- future = loader.makeXxx(assetinfo)
+--- future:load(callback)
+--- future:free() 这样如果callback没有调用就不会调了
 --- 应用主要就使用这个api
 
 local Asset = {}
@@ -50,13 +51,12 @@ function Asset:load(callback)
     end)
 end
 
-function Asset:equals(other)
-    return other and other.__index == Asset and other.assetinfo == self.assetinfo
-end
+
+
 
 local GameObj = {}
 
-function GameObj:new(pool, assetinfo, attachment)
+function GameObj:new(pool, assetinfo)
     local instance = {}
     setmetatable(instance, self)
     self.__index = self
@@ -66,7 +66,6 @@ function GameObj:new(pool, assetinfo, attachment)
     instance.err = nil
     instance.state = StateLoading
     instance.wantfree = false
-    instance.attachment = attachment
     return instance
 end
 
@@ -78,7 +77,7 @@ function GameObj:free()
 
     if self.state == StateUsing then
         if self.go ~= nil then
-            self.pool:free(self.assetinfo, self.go, self.attachment)
+            self.pool:free(self.assetinfo, self.go)
         end
         self.state = StateFree
     end
@@ -88,7 +87,7 @@ function GameObj:load(callback)
     self.pool:load(self.assetinfo, function(go, err)
         if self.wantfree then
             if go ~= nil then
-                self.pool:free(self.assetinfo, go, self.attachment)
+                self.pool:free(self.assetinfo, go)
             end
             self.state = StateFree
             return
@@ -101,9 +100,7 @@ function GameObj:load(callback)
     end)
 end
 
-function GameObj:equals(other)
-    return other and other.__index == GameObj and other.assetinfo == self.assetinfo
-end
+
 
 
 local Multi = {}
@@ -151,9 +148,8 @@ function Multi:free()
     end
 end
 
-function Multi:equals(_)
-    return false
-end
+
+
 
 local loader = {}
 
@@ -161,66 +157,16 @@ loader.StateLoading = StateLoading
 loader.StateUsing = StateUsing
 loader.StateFree = StateFree
 
-function loader.loadAsset(assetinfo, callback)
-    local future = Asset:new(assetinfo)
-    future:load(callback)
-    return future
-end
-
-function loader.loadGameObject(pool, assetinfo, callback, attachment)
-    local future = GameObj:new(pool, assetinfo, attachment)
-    future:load(callback)
-    return future
-end
-
-function loader.multiloadAsset(assetinfos, callback)
-    local futures = {}
-    for _, assetinfo in ipairs(assetinfos) do
-        table.insert(futures, Asset:new(assetinfo))
-    end
-    local multiGo = Multi:new(futures)
-    multiGo:load(callback)
-    return multiGo
-end
-
-function loader.multiloadGameObject(pool_assetinfos, callback)
-    local futures = {}
-    for _, v in ipairs(pool_assetinfos) do
-        table.insert(futures, GameObj:new(v.pool, v.assetinfo))
-    end
-    local multiGo = Multi:new(futures)
-    multiGo:load(callback)
-    return multiGo
-end
-
-function loader.multiloadMixed(goargs, assetargs, callback)
-    local mixed = loader.makeMulti(goargs, assetargs)
-    mixed:load(callback)
-    return mixed
-end
 
 function loader.makeAsset(assetinfo)
     return Asset:new(assetinfo)
 end
 
-function loader.makeGameObj(pool, assetinfo, attachment)
-    return GameObj:new(pool, assetinfo, attachment)
+function loader.makeGameObj(pool, assetinfo)
+    return GameObj:new(pool, assetinfo)
 end
 
-function loader.makeMulti(goargs, assetargs)
-    --    混 合 加 载 gameobject 和 asset ， 例 如 加 载 人 物 部 件 模 型 ， 同 时 加 载 3 S 材 质
-    --    示 例 ：
-    --    local loadargs = {
-    --        { isGameObject = true, pool = module.pool.attachment, assetinfo = assetinfo, callback = callback, },
-    --        { isAsset = true, assetinfo = assetinfo, },
-    --    }
-    local futures = {}
-    for _, arg in pairs(goargs) do
-        table.insert(futures, GameObj:new(arg.pool, arg.assetinfo, arg.attachment))
-    end
-    for _, arg in pairs(assetargs) do
-        table.insert(futures, Asset:new(arg.assetinfo))
-    end
+function loader.makeMulti(futures)
     return Multi:new(futures)
 end
 

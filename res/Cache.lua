@@ -145,12 +145,12 @@ function Cache:_purge()
                     logger.Res("    AB.Unload {0}", assetinfo.assetpath)
                     asset:Unload(true)
                     --- assetbundle都没有引用了，那些个依赖它的prefab，asset肯定也没有应用了，可以放心unload(true)
-                elseif type == util.assettype.prefab then
+                --elseif type == util.assettype.prefab then
                     --logger.Res("    Ignored Unload {0}", eldest_assetid)
                     --- 不担心，会由assetbundle释放。假设所有的prefab都来自assetbundle
-                else
-                    logger.Res("    Resources.UnloadAsset {0}", assetinfo.assetpath)
-                    Resources.UnloadAsset(asset)
+                --else
+                --    不能释放
+                --    Resources.UnloadAsset(asset)
                 end
             end
             Cache.res._realfree(assetinfo)
