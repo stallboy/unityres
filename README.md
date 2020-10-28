@@ -1,11 +1,11 @@
 # unityres
 
-相当于unity后来推出的Addressable API，但有更多功能
+unityres相当于unity后来推出的Addressable API，但有更多功能
 
 * 异步加载的四种模式
-* 加载外部资源如图片，音频和加载asset使用同一套API
 * 统一的缓存管理
 * 一个自动化的打包策略
+* 统一unity资源和外部资源的加载
 
 ## 详细介绍
 
