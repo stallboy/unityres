@@ -125,7 +125,7 @@ function Attachment:attach(attachkey, thisloader, callback, ...)
 接口为
 
 ```lua
-\--------------------------------------------------------
+--------------------------------------------------------
 --- Avatar，做2件事情
 --- 1，保证所有attach都加载上来后整体显示，而不会单个显示出来，比如先显示个头，再显示身体就太怪了
 --- 2，Avatar有个骨骼，多个部件。部件有挂点attachpoint(可以为nil)，必须等skeleton加载完后才挂到attachpoint上
