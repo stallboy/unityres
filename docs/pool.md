@@ -1,6 +1,6 @@
 ## 统一的缓存管理
 
-* [目录](/)
+* [目录](/index.md)
     1. [逻辑层的异步加载处理策略](/usage.md)
     2. [资源管理实现和Addressable API](/impl.md)
     3. [统一的缓存管理](/pool.md)

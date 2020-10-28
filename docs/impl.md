@@ -1,6 +1,6 @@
 ## 资源管理实现和Addressable API
 
-* [目录](/)
+* [目录](/index.md)
     1. [逻辑层的异步加载处理策略](/usage.md)
     2. [资源管理实现和Addressable API](/impl.md)
     3. [统一的缓存管理](/pool.md)
@@ -21,51 +21,50 @@ Release(asyncOperationHandle)
 
 ### 资源管理的引用计数实现
 
-#### 错误方式：使用 c# 的 gc，在 Finalize 函数里去释放资源。
+1. 错误方式：使用 c# 的 gc，在 Finalize 函数里去释放资源。
 
-原理是当 c# 的对象被 GC 的时候，会回调对象的 Finalize 函数。在这里通知 c++ 去释放资源。但其实涉及到：
-
-<1>系统资源比如 File Handle，这种操作系统管理的每个进程只能开启有限个文件句柄的资源，还是尽早释放的好，尽早释放还能让 OS 释放文件内容缓存的内存。
+    原理是当 c# 的对象被 GC 的时候，会回调对象的 Finalize 函数。在这里通知 c++ 去释放资源。但其实涉及到：
     
-<2>另一个系统比如 c++ 引擎系统的大对象，因为 c# 管理的对象内部只保存了资源对象指针，不占什么空间，GC 又不能直接管理不到 C++ 里的资源对象。
-等它触发 GC 就太慢了。可以参考 [Dispose vs Finalize](http://dotnetmentors.com/c-sharp/implementing-finalize-and-dispose-of-net-framework.aspx)
+    <1>系统资源比如 File Handle，这种操作系统管理的每个进程只能开启有限个文件句柄的资源，还是尽早释放的好，尽早释放还能让 OS 释放文件内容缓存的内存。
+        
+    <2>另一个系统比如 c++ 引擎系统的大对象，因为 c# 管理的对象内部只保存了资源对象指针，不占什么空间，GC 又不能直接管理不到 C++ 里的资源对象。
+    等它触发 GC 就太慢了。可以参考 [Dispose vs Finalize](http://dotnetmentors.com/c-sharp/implementing-finalize-and-dispose-of-net-framework.aspx)
 
-#### 正确方式：基于引用计数
+2. 正确方式：基于引用计数
 
-这里又分两种，一种是外部依赖度计数，一种是直接依赖度计数，以下图中比如 C 1，表示资源是 C，计数是 1。
-
-![](/alldep.png)
-
-![](/directdep.png)
-
-* 外部依赖度的计数是此资源有多少 user 依赖它。
+    这里又分两种，一种是外部依赖度计数，一种是直接依赖度计数，以下图中比如 C 1，表示资源是 C，计数是 1。
     
-* 直接依赖度计数是此资源有多少其他资源或 user 直接依赖它，就是跟它相连的线个数。
+    ![](/alldep.png)
     
-
-Addressable 使用的是外部依赖度计数。我们用的直接依赖读计数。
-
-这里的原因是 Addressable 不做任何的缓存管理，而我们集成了缓存的管理。
-也因为对 Addressable 来说 AssetBundle 是隐藏不可见的，
-而我们把 AssetBundle 也视为一个 asset 了，可以加载返回一个 loader（这样可以对 assetbundle 做缓存策略管理，同时我们对 Scene 的加载没放在这里，而放在了上层）。
-直接依赖计数的具体实现可参考 [res.lua](https://github.com/stallboy/unityres/blob/master/res/res.lua)
+    ![](/directdep.png)
+    
+    * 外部依赖度的计数是此资源有多少 user 依赖它。
+        
+    * 直接依赖度计数是此资源有多少其他资源或 user 直接依赖它，就是跟它相连的线个数。
+    
+    Addressable 使用的是外部依赖度计数。我们用的直接依赖读计数。
+    
+    这里的原因是 Addressable 不做任何的缓存管理，而我们集成了缓存的管理。
+    也因为对 Addressable 来说 AssetBundle 是隐藏不可见的，
+    而我们把 AssetBundle 也视为一个 asset 了，可以加载返回一个 loader（这样可以对 assetbundle 做缓存策略管理，同时我们对 Scene 的加载没放在这里，而放在了上层）。
+    直接依赖计数的具体实现可参考 [res.lua](https://github.com/stallboy/unityres/blob/master/res/res.lua)
 
 
 ### Asset 与 AssetBundle 的释放策略
 
 另外一个看 Addressable 源码想验证的就是：asset 与包含它的 bundle 的具体的释放策略。结论是跟我们一致。  
 
-#### 1，当持有 asset 时，包含它的 bundle 不能释放。
+1. 当持有 asset 时，包含它的 bundle 不能释放。
 
-假设我们从 bundle 里加载得到 asset1 后，bundle.Unload(false)。
+    假设我们从 bundle 里加载得到 asset1 后，bundle.Unload(false)。
+    
+    则当下次加载另一个 asset2，我们假设 asset2 依赖 asset1，加载这个 asset2 时，unity 会再次加载 asset1 所在的 bundle，再加载 asset1，而这个 asset1 因为和上次的 asset1 来自 2 次不同加载的 bundle。导致 asset1 在内存中有 2 份。
 
-则当下次加载另一个 asset2，我们假设 asset2 依赖 asset1，加载这个 asset2 时，unity 会再次加载 asset1 所在的 bundle，再加载 asset1，而这个 asset1 因为和上次的 asset1 来自 2 次不同加载的 bundle。导致 asset1 在内存中有 2 份。
+2. 当持有的 asset 释放时，不能 UnloadAsset
 
-#### 2，当持有的 asset 释放时，不能 UnloadAsset
-
-Unity 的确提供了 Resources.UnloadAsset，但别用。正确的做法是 等 bundle 里所有的 asset 都没有被引用时，释放 bundle 和所有的 asset。即 bundle.Unload(true)。为什么呢？  
-
-假设 bundle 里有一个 ui 的 prefab，有一个 sprite，2 个 asset；prefab 包含这个 sprite。注意这个 prefab 对 sprite 的依赖，并没有被引用计数表达出来，所以当 user 使用着这个 prefab，然后先加载使用这个 sprite 然后再释放。如果我们 UnloadAsset，则 prefab 依赖的 sprite 就没了。表现出来是 ui 有时图标消失，显示白片。
+    Unity 的确提供了 Resources.UnloadAsset，但别用。正确的做法是 等 bundle 里所有的 asset 都没有被引用时，释放 bundle 和所有的 asset。即 bundle.Unload(true)。为什么呢？  
+    
+    假设 bundle 里有一个 ui 的 prefab，有一个 sprite，2 个 asset；prefab 包含这个 sprite。注意这个 prefab 对 sprite 的依赖，并没有被引用计数表达出来，所以当 user 使用着这个 prefab，然后先加载使用这个 sprite 然后再释放。如果我们 UnloadAsset，则 prefab 依赖的 sprite 就没了。表现出来是 ui 有时图标消失，显示白片。
 
 Addressable 里的 AssetBundleProvider.cs, BundledAssetProvider.cs 里的 Release 可看到这个策略。我们的是在 [Cache.lua](https://github.com/stallboy/unityres/blob/master/res/Cache.lua) 的\_realfree 里。  
 
