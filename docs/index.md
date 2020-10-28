@@ -1,37 +1,20 @@
-## Welcome to GitHub Pages
+# unityres
 
-You can use the [editor on GitHub](https://github.com/stallboy/unityres/edit/master/docs/index.md) to maintain and preview the content for your website in Markdown files.
+相当于unity后来推出的Addressable API，但有更多功能
 
-Whenever you commit to this repository, GitHub Pages will run [Jekyll](https://jekyllrb.com/) to rebuild the pages in your site, from the content in your Markdown files.
+* 异步加载的四种模式
+* 加载外部资源如图片，音频和加载asset使用同一套API
+* 统一的缓存管理
+* 一个自动化的打包策略
 
-### Markdown
+## 详细介绍
 
-Markdown is a lightweight and easy-to-use syntax for styling your writing. It includes conventions for
+* [逻辑层的异步加载处理策略](/usage.md)
 
-```markdown
-Syntax highlighted code block
+* [资源管理实现和Addressable API](/impl.md)
 
-# Header 1
-## Header 2
-### Header 3
+* [统一的缓存管理](/pool.md)
 
-- Bulleted
-- List
+* [自动化的打包策略](/pack.md)
 
-1. Numbered
-2. List
 
-**Bold** and _Italic_ and `Code` text
-
-[Link](url) and ![Image](src)
-```
-
-For more details see [GitHub Flavored Markdown](https://guides.github.com/features/mastering-markdown/).
-
-### Jekyll Themes
-
-Your Pages site will use the layout and styles from the Jekyll theme you have selected in your [repository settings](https://github.com/stallboy/unityres/settings). The name of this theme is saved in the Jekyll `_config.yml` configuration file.
-
-### Support or Contact
-
-Having trouble with Pages? Check out our [documentation](https://docs.github.com/categories/github-pages-basics/) or [contact support](https://github.com/contact) and we’ll help you sort it out.
