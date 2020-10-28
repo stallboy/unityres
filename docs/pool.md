@@ -18,9 +18,11 @@
 function Cache:setCachePolicy(maxsize, timeout_seconds)
 ```
 
-此 cache 最多缓存额外 maxsize 个资源，这些额外的资源在 timeout _seconds 秒后也被释放。参考 [Cache.lua](https://github.com/stallboy/unityres/blob/master/res/Cache.lua)  
+此 cache 最多缓存额外 maxsize 个资源，这些额外的资源在 timeout_seconds 秒后也被释放。
+参考 [Cache.lua](https://github.com/stallboy/unityres/blob/master/res/Cache.lua)  
 
-注意这里不是只有一个全局的 Cache，而是分类了。每个 assetpath 唯一对应一个 cache，这种对应关系被记录在我们的 assetinfo 和 cachepolicy 表中，这两个表是我们打 assetbundle 时生成的。
+注意这里不是只有一个全局的 Cache，而是分类了。每个 assetpath 唯一对应一个 cache，
+这种对应关系被记录在我们的 assetinfo 和 cachepolicy 表中，这两个表是我们打 assetbundle 时生成的。
 
 具体实际的缓存策略如下：
 
@@ -54,9 +56,12 @@ setpolicy(assetcachepolicy.sfx, 0)
 function Pool:setCachePolicy(max_extra_go_size, max_extra_res_size, timeout_seconds)
 ```
 
-此 pool 最多额外缓存 max _extra _go _size 个 GameObject，这个额外缓存的 GameObjct 最多额外占用 max _extra _res _size 个资源，这些额外缓存在 timeout _seconds 后被释放。参考 [Pool.lua](https://github.com/stallboy/unityres/blob/master/res/Pool.lua)  
+此pool最多额外缓存 max_extra_go_size 个 GameObject，
+这个额外缓存的 GameObject 最多额外占用 max_extra_res_size 个资源，
+这些额外缓存在 timeout_seconds 后被释放。参考 [Pool.lua](https://github.com/stallboy/unityres/blob/master/res/Pool.lua)  
 
-同样这里也不是一个全局性的 Pool，而是分类。要得到 GameObject 必须提供 pool，使用接口在 [loader.lua](https://github.com/stallboy/unityres/blob/master/res/loader.lua) 里：
+同样这里也不是一个全局性的 Pool，而是分类。要得到GameObject必须提供pool，
+使用接口在 [loader.lua](https://github.com/stallboy/unityres/blob/master/res/loader.lua) 里：
 
 ```lua
 local loader = makeGameObj(pool, assetinfo)
@@ -91,7 +96,8 @@ resmgr.setCachePolicyParam(uimgr.component_multipool, { 40 }, { 20 })
 
 1. pool 下面还有 cache 做缓存，双层缓存，但 prefab 的 cache 都是 0，都在 pool 里去配置缓存，因为：在最靠近 user 的地方配缓存。
 
-2. 看到 ui 的 pool 缓存都是 0，因为上层还有一层 lua 对象的缓存，这个 lua 对象包含 GameObject，，单例的 UI 界面只缓存一个，而多例的 worldpanel 缓存 40 个。
+2. 看到 ui 的 pool 缓存都是 0，因为上层还有一层 lua 对象的缓存，这个 lua 对象包含 GameObject，
+单例的 UI 界面只缓存一个，而多例的 worldpanel 缓存 40 个。
 
 ### 统一的缓存策略
 
@@ -99,4 +105,6 @@ resmgr.setCachePolicyParam(uimgr.component_multipool, { 40 }, { 20 })
 
 1. 其他逻辑程序不用考虑缓存策略，而是在一个集中的地方被做优化的程序统一管理。
 
-2. 可以附加进一步的自适应策略，比如 OS 发出低内存警告后，所有的缓存策略 max _size 都除以 2，甚至把额外缓存全部清掉。
+2. 可以附加进一步的自适应策略，比如 OS 发出低内存警告后，所有的缓存策略 max_size 都除以 2，甚至把额外缓存全部清掉。
+
+下一篇讲[自动化的打包策略](/pack.md)
